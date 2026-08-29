@@ -578,7 +578,8 @@
     </div>
   </div>
   <div style="text-align:center;margin-top:36px;">
-    <a href="https://docs.google.com/forms/d/e/1FAIpQLScz0BjBIb03YLj--XWB0TwTEiE-ol5_8HAXLBDotyR0rCki3A/viewform" target="_blank" class="btn-inscripcion-grande">✍️ Inscríbete al 2º GIT Week 2026</a>
+    <div id="countdown-inscripcion" style="margin-bottom:14px;font-size:14px;color:var(--texto-secundario);font-weight:600;"></div>
+    <a href="https://docs.google.com/forms/d/e/1FAIpQLScz0BjBIb03YLj--XWB0TwTEiE-ol5_8HAXLBDotyR0rCki3A/viewform" id="btn-inscripcion" data-href="https://docs.google.com/forms/d/e/1FAIpQLScz0BjBIb03YLj--XWB0TwTEiE-ol5_8HAXLBDotyR0rCki3A/viewform" class="btn-inscripcion-grande">✍️ Inscríbete al 2º GIT Week 2026</a>
   </div>
 </section>
 
@@ -627,6 +628,50 @@
   }
   actualizarCountdown();
   setInterval(actualizarCountdown, 1000);
+
+  // ===== BLOQUEO DEL BOTÓN DE INSCRIPCIÓN HASTA EL DOMINGO 30 DE AGOSTO 2026, 10:00 AM (HORA PERÚ, UTC-5, fijo sin importar la zona horaria del visitante) =====
+  const fechaHabilitacionInscripcion = new Date("2026-08-30T10:00:00-05:00").getTime();
+  const btnInscripcion = document.getElementById("btn-inscripcion");
+  const contadorInscripcion = document.getElementById("countdown-inscripcion");
+  const linkRealInscripcion = btnInscripcion.getAttribute("data-href");
+
+  function inscripcionYaHabilitada(){
+    return new Date().getTime() >= fechaHabilitacionInscripcion;
+  }
+
+  function actualizarEstadoInscripcion(){
+    const ahora = new Date().getTime();
+    const diff = fechaHabilitacionInscripcion - ahora;
+
+    if(diff <= 0){
+      contadorInscripcion.textContent = "¡Las inscripciones ya están abiertas!";
+      btnInscripcion.setAttribute("href", linkRealInscripcion);
+      btnInscripcion.setAttribute("target", "_blank");
+      btnInscripcion.style.opacity = "1";
+      btnInscripcion.style.cursor = "pointer";
+      return;
+    }
+
+    btnInscripcion.removeAttribute("href");
+    btnInscripcion.style.opacity = "0.6";
+    btnInscripcion.style.cursor = "not-allowed";
+
+    const dias = Math.floor(diff / (1000*60*60*24));
+    const horas = Math.floor((diff % (1000*60*60*24)) / (1000*60*60));
+    const min = Math.floor((diff % (1000*60*60)) / (1000*60));
+    const seg = Math.floor((diff % (1000*60)) / 1000);
+    contadorInscripcion.textContent = `⏳ Se habilita en ${dias}d ${horas}h ${min}m ${seg}s`;
+  }
+
+  btnInscripcion.addEventListener("click", function(e){
+    if(!inscripcionYaHabilitada()){
+      e.preventDefault();
+      alert("Aún no está habilitado el formulario de inscripción. Se abrirá el domingo 30 de agosto a las 10:00 am.");
+    }
+  });
+
+  actualizarEstadoInscripcion();
+  setInterval(actualizarEstadoInscripcion, 1000);
 
   // ===== DATOS DEL CRONOGRAMA =====
   // Basado en cronograma_git.txt. Plan: "libre" | "normal" | "premium" (ajustar cuando Logística confirme los beneficios reales de cada plan)
