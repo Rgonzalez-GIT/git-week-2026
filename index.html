@@ -37,7 +37,8 @@
     position:sticky;top:0;z-index:100;
   }
   .nav-logos{display:flex;align-items:center;gap:16px;}
-  .nav-logos img{height:42px;}
+  .nav-logos img{height:64px;width:auto;}
+  .nav-logos img:last-child{height:76px;}
   .nav-links{display:flex;gap:28px;list-style:none;}
   .nav-links a{
     text-decoration:none;color:var(--negro);font-size:15px;font-weight:500;
@@ -55,7 +56,7 @@
   }
   .hero-badge{
     display:inline-block;background:var(--guinda);color:var(--crema-2);
-    padding:6px 18px;border-radius:20px;font-size:13px;font-weight:600;
+    padding:8px 22px;border-radius:22px;font-size:16px;font-weight:600;
     margin-bottom:24px;letter-spacing:1px;
   }
   .hero h1{
@@ -71,7 +72,7 @@
     max-width:560px;margin:0 auto 32px;color:var(--texto-secundario);font-size:16px;
   }
   .hero-mascota{
-    width:280px;margin:0 auto 24px;
+    width:420px;margin:0 auto 12px;
   }
   .hero-mascota img{width:100%;display:block;}
 
@@ -111,18 +112,14 @@
     display:flex;flex-direction:column;
   }
   .eje-icono-box{
-    height:130px;display:flex;align-items:center;justify-content:center;
+    height:150px;display:flex;align-items:center;justify-content:center;
     margin-bottom:14px;
   }
-  .eje-card .icono{
-    max-width:64px;max-height:64px;width:auto;height:auto;
-    object-fit:contain;
-  }
-  .eje-card .icono.icono-md{
-    max-width:82px;max-height:82px;
-  }
+  .eje-card .icono,
+  .eje-card .icono.icono-md,
   .eje-card .icono.icono-grande{
-    max-width:120px;max-height:120px;
+    max-width:130px;max-height:130px;width:auto;height:auto;
+    object-fit:contain;
   }
   .eje-card div.icono{
     width:48px;height:48px;background:var(--azul);border-radius:10px;
