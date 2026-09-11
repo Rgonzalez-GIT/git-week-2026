@@ -117,7 +117,10 @@ let app: INestApplication;
     const server = app.getHttpServer();
 
     const catalog = await request(server).get('/products').expect(200);
-    expect(catalog.body.some((p: any) => p.id === productId && p.availableStock === 50)).toBe(true);
+    const slugs = catalog.body.map((p: any) => p.slug);
+    expect(slugs.sort()).toEqual(['executive', 'general', 'professional']);
+    expect(typeof catalog.body[0].initialStock).toBe('number');
+    expect(catalog.body[0]).not.toHaveProperty('code');
 
     const sessionKey = `demo-${randomUUID()}`;
     usedSessionKeys.push(sessionKey);

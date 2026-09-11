@@ -9,6 +9,7 @@ export interface CatalogProduct {
   description: string | null;
   priceCents: number;
   availableStock: number;
+  initialStock: number;
 }
 
 export interface CatalogStock {
@@ -19,10 +20,14 @@ export interface CatalogStock {
   initialStock: number;
 }
 
+/** Tipos de entrada que ofrece la tienda (según el seed). */
+const TIENDA_SLUGS = ['general', 'professional', 'executive'];
+
 /**
  * Fase 11 (parcial) - Catalogo público de la tienda.
- * Solo lectura: lista los productos ACTIVE con el stock disponible
+ * Solo lectura: lista los tipos de entrada ACTIVE con su stock disponible
  * (ya descontando reservas vigentes). El stock lo administra PostgreSQL.
+ * Solo se exponen los planes del seed (nunca productos de tests/demo).
  */
 @Injectable()
 export class ProductService {
@@ -30,7 +35,7 @@ export class ProductService {
 
   async listAvailable(): Promise<CatalogProduct[]> {
     const rows = await this.prisma.product.findMany({
-      where: { status: ProductStatus.ACTIVE },
+      where: { status: ProductStatus.ACTIVE, slug: { in: TIENDA_SLUGS } },
       include: { inventory: true },
       orderBy: { id: 'asc' },
     });
@@ -41,6 +46,7 @@ export class ProductService {
       description: p.description,
       priceCents: p.priceCents,
       availableStock: p.inventory?.availableStock ?? 0,
+      initialStock: p.inventory?.initialStock ?? 0,
     }));
   }
 

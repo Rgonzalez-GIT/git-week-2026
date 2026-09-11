@@ -41,7 +41,8 @@ services:
       NODE_ENV: production
       PORT: "3001"
       DATABASE_URL: postgresql://${POSTGRES_USER:-gitweek}:${POSTGRES_PASSWORD:-gitweek_dev}@postgres:5432/${POSTGRES_DB:-gitweek}?schema=public
-      RESERVATION_TTL_MINUTES: "10"
+      RESERVATION_TTL_MINUTES: "6"
+      SWEEP_INTERVAL_MS: "30000"
       PAYMENT_PROVIDER: sandbox
       REDIS_HOST: redis
       REDIS_PORT: "6379"

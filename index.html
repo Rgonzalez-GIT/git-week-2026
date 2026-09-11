@@ -258,6 +258,20 @@
   .producto-card .precio small{font-size:12px;color:var(--texto-secundario);font-weight:400;}
   .producto-card .stock-msg{font-size:12px;color:var(--texto-secundario);}
   .producto-card .stock-msg.agotado{color:var(--guinda);font-weight:600;}
+  .producto-card .stock-msg .quedan{font-weight:700;color:#2d7a50;}
+  .producto-card .soldout-badge{
+    display:inline-block;background:var(--guinda);color:#fff;font-weight:800;font-size:12px;
+    letter-spacing:.5px;padding:4px 10px;border-radius:6px;margin-top:8px;
+  }
+  .tienda-aviso{
+    background:rgba(122,27,43,.06);border:1px solid rgba(122,27,43,.22);color:var(--guinda);
+    padding:8px 12px;border-radius:8px;font-size:13px;margin-bottom:12px;
+  }
+  .cuenta-regresiva{
+    background:rgba(122,27,43,.08);border:1px dashed rgba(122,27,43,.35);color:var(--guinda);
+    font-weight:700;font-size:13px;padding:9px 10px;border-radius:8px;text-align:center;
+    margin-top:4px;
+  }
   .producto-card .row{display:flex;gap:8px;align-items:center;margin-top:6px;}
   .producto-card input[type=number]{
     width:52px;padding:6px 8px;border:1px solid rgba(122,27,43,0.2);border-radius:6px;
@@ -675,6 +689,7 @@
 
   <div class="tienda-layout">
     <div>
+      <div class="tienda-aviso" id="tienda-aviso" style="display:none"></div>
       <div class="tienda-catalogo" id="tienda-productos">
         <p style="color:var(--texto-secundario);font-size:14px;">Cargando productos…</p>
       </div>
@@ -690,10 +705,11 @@
       <div class="carrito-acciones" id="carrito-acciones" style="display:none">
         <button class="btn-reservar" id="btn-reservar">Reservar y crear orden</button>
         <div class="cupon-row" id="cupon-row" style="display:none">
-          <input type="text" id="cupon-input" placeholder="Cupón (ej. URPxGIT)">
+          <input type="text" id="cupon-input" placeholder="Ingresa tu código de cupón" autocomplete="off">
           <button class="btn-cupon" id="btn-cupon">Aplicar</button>
         </div>
         <button class="btn-pagar" id="btn-pagar" disabled>Pagar</button>
+        <div class="cuenta-regresiva" id="cuenta-regresiva" style="display:none"></div>
         <div class="checkout-estado" id="checkout-estado" style="display:none"></div>
         <button class="btn-reservar" id="btn-confirmar" disabled style="background:var(--dorado);margin-top:4px;">Confirmar pago</button>
         <div class="confirmar-msg" id="confirmar-msg" style="display:none"></div>
@@ -889,8 +905,41 @@
       localStorage.setItem('gw-session', sessionKey);
     }
 
-    const tienda = { products: [], cart: [], order: null, payment: null };
+    const tienda = { products: [], cart: [], order: null, payment: null, expiresAt: null };
     const sol = (c) => 'S/ ' + (c / 100).toFixed(2);
+
+    let countdownTimer = null;
+    function clearCountdown() { if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; } }
+    function aviso(msg) {
+      const el = document.getElementById('tienda-aviso');
+      if (!msg) { el.style.display = 'none'; return; }
+      el.textContent = msg; el.style.display = 'block';
+    }
+    function iniciarCuentaRegresiva(expiresAtStr) {
+      const box = document.getElementById('cuenta-regresiva');
+      clearCountdown();
+      function tick() {
+        const left = Math.max(0, Math.floor((new Date(expiresAtStr).getTime() - Date.now()) / 1000));
+        if (left <= 0) {
+          clearCountdown();
+          box.textContent = 'Tu reserva expiró. El stock fue liberado.';
+          box.classList.add('expirada');
+          box.style.display = 'block';
+          aviso('Tu reserva venció. El stock fue liberado; vuelve a intentarlo.');
+          resetCheckout();
+          loadProducts(); loadCart();
+          return;
+        }
+        const m = String(Math.floor(left / 60)).padStart(2, '0');
+        const s = String(left % 60).padStart(2, '0');
+        box.textContent = 'Confirma el pago antes de ' + m + ':' + s + ' para asegurar tu entrada.';
+        box.classList.remove('expirada');
+        box.style.display = 'block';
+      }
+      tick();
+      countdownTimer = setInterval(tick, 1000);
+      countdownTimer.unref?.();
+    }
 
     async function api(url, opts) {
       const res = await fetch(API + url, Object.assign({ headers: { 'Content-Type': 'application/json' } }, opts));
@@ -917,13 +966,17 @@
         const card = document.createElement('div');
         card.className = 'producto-card';
         const agotado = p.availableStock <= 0;
+        const lowStock = !agotado && p.availableStock <= Math.min(10, Math.floor(p.initialStock * 0.05));
         card.innerHTML =
           '<h4>' + p.name + '</h4>' +
           '<div class="desc">' + (p.description || '') + '</div>' +
           '<div class="precio">' + sol(p.priceCents) + ' <small>/ plan</small></div>' +
-          '<div class="stock-msg ' + (agotado ? 'agotado' : '') + '">' +
-            (agotado ? 'Agotado' : 'Disponible: ' + p.availableStock) + '</div>' +
-          (agotado ? '' :
+          '<div class="stock-msg">' +
+            (agotado
+              ? '<strong>SOLD OUT</strong>'
+              : '<span class="quedan">' + p.availableStock + '</span> de ' + p.initialStock + ' disponibles' + (lowStock ? ' — ¡últimos cupos!' : '')) +
+          '</div>' +
+          (agotado ? '<span class="soldout-badge">SOLD OUT</span>' :
             '<div class="row">' +
             '<input type="number" id="tqty-' + p.id + '" min="1" max="' + p.availableStock + '" value="1">' +
             '<button class="btn-carrito" data-tadd="' + p.id + '">Agregar</button>' +
@@ -966,11 +1019,14 @@
 
     async function addToCart(productId, qty) {
       try {
+        aviso('');
         await api('/cart/session/' + encodeURIComponent(sessionKey) + '/items', {
           method: 'POST', body: JSON.stringify({ productId, quantity: qty })
         });
         await loadCart();
-      } catch (e) { console.error(e); }
+      } catch (e) {
+        aviso('No se pudo agregar al carrito: ' + (e.message || 'error'));
+      }
     }
 
     async function removeFromCart(productId) {
@@ -991,6 +1047,10 @@
     function resetCheckout() {
       tienda.order = null;
       tienda.payment = null;
+      tienda.expiresAt = null;
+      clearCountdown();
+      const cr = document.getElementById('cuenta-regresiva');
+      if (cr) { cr.textContent = ''; cr.style.display = 'none'; cr.classList.remove('expirada'); }
       const box = document.getElementById('checkout-estado');
       if (box) box.innerHTML = '';
       document.getElementById('cupon-row').style.display = 'none';
@@ -998,6 +1058,7 @@
       document.getElementById('btn-confirmar').disabled = true;
       document.getElementById('btn-reservar').disabled = false;
       document.getElementById('confirmar-msg').style.display = 'none';
+      aviso('');
     }
 
     document.addEventListener('click', (ev) => {
@@ -1027,6 +1088,8 @@
           method: 'POST', body: JSON.stringify({ productId: item.productId, quantity: item.quantity })
         });
         addStatus('Reserva creada', true);
+        tienda.expiresAt = r.reservation.expiresAt;
+        iniciarCuentaRegresiva(r.reservation.expiresAt);
 
         addStatus('Creando orden…', false);
         const o = await api('/demo/orders', {
@@ -1080,6 +1143,11 @@
 
     document.getElementById('btn-confirmar').addEventListener('click', async () => {
       if (!tienda.order) return;
+      if (tienda.expiresAt && new Date(tienda.expiresAt).getTime() <= Date.now()) {
+        aviso('Tu reserva expiró. No puedes confirmar el pago.');
+        resetCheckout(); await loadProducts(); await loadCart();
+        return;
+      }
       const btn = document.getElementById('btn-confirmar');
       btn.disabled = true;
       btn.textContent = 'Confirmando…';
@@ -1087,12 +1155,17 @@
         const res = await api('/demo/payments/confirm', {
           method: 'POST', body: JSON.stringify({ orderPublicId: tienda.order.publicId, success: true })
         });
+        clearCountdown();
         addStatus('¡Pago confirmado! Orden ' + res.order.status, true);
-        document.getElementById('confirmar-msg').style.display = 'block';
-        document.getElementById('confirmar-msg').textContent = 'Tu compra fue registrada exitosamente.';
+        const confirmMsg = document.getElementById('confirmar-msg');
+        confirmMsg.style.display = 'block';
+        confirmMsg.textContent = 'Tu compra fue registrada exitosamente. ¡Disfruta del GIT Week 2026!';
+        const purchasedProductId = tienda.order.items?.[0]?.productId ?? tienda.cart[0]?.productId;
         resetCheckout();
-        await loadProducts();
-        await loadCart();
+        if (purchasedProductId) {
+          try { await removeFromCart(purchasedProductId); } catch (_) {}
+        }
+        await loadProducts(); await loadCart();
       } catch (e) {
         addStatus('Confirmación: ' + e.message, false);
         btn.disabled = false;
@@ -1102,6 +1175,7 @@
 
     loadProducts();
     loadCart();
+    setInterval(loadProducts, 15000);
   })();
 </script>
 

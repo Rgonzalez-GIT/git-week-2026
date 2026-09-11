@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 import { InventoryReservation } from '../generated/prisma/client.js';
@@ -24,16 +24,43 @@ export interface CancelReservationResult {
  * (UPDATE con guarda; PostgreSQL es la fuente de verdad).
  */
 @Injectable()
-export class ReservationService {
+export class ReservationService implements OnModuleInit, OnModuleDestroy {
   private readonly ttlMinutes: number;
+  private readonly logger = new Logger(ReservationService.name);
+  private sweepTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventory: InventoryService,
     config: ConfigService,
   ) {
-    const ttl = Number(config.get<string>('RESERVATION_TTL_MINUTES', '10'));
-    this.ttlMinutes = Number.isFinite(ttl) && ttl > 0 ? ttl : 10;
+    const ttl = Number(config.get<string>('RESERVATION_TTL_MINUTES', '6'));
+    this.ttlMinutes = Number.isFinite(ttl) && ttl > 0 ? ttl : 6;
+  }
+
+  /**
+   * Fase 16 - Autosweep: cada SWEEP_INTERVAL_MS (default 30s) expira reservas
+   * vencidas y libera su stock. 0 desactiva el scheduler (caso de tests).
+   */
+  onModuleInit() {
+    const intervalMs = Number(process.env.SWEEP_INTERVAL_MS ?? '30000');
+    if (Number.isFinite(intervalMs) && intervalMs > 0) {
+      this.sweepTimer = setInterval(() => {
+        this.expireSweep()
+          .then((n) => {
+            if (n > 0) this.logger.log(`Sweep: ${n} reserva(s) expirada(s), stock liberado`);
+          })
+          .catch((err: Error) => this.logger.warn(`Sweep fallo: ${err.message}`));
+      }, intervalMs);
+      this.sweepTimer.unref?.();
+    }
+  }
+
+  onModuleDestroy() {
+    if (this.sweepTimer) {
+      clearInterval(this.sweepTimer);
+      this.sweepTimer = null;
+    }
   }
 
   async findByPublicId(publicId: string): Promise<InventoryReservation> {
