@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  DATABASE_URL: postgresql://gitweek:gitweek_dev@localhost:5432/gitweek?schema=public
+  DEMO_MODE: "true"
+  REDIS_HOST: localhost
+  REDIS_PORT: "6379"
+  JWT_ACCESS_SECRET: ci_access_secret
+  JWT_REFRESH_SECRET: ci_refresh_secret
+  JWT_ACCESS_TTL: "900"
+  JWT_REFRESH_TTL: "604800"
+  WEBHOOK_SECRET: ci_webhook_secret
+  PAYMENT_PROVIDER: sandbox
+  RESERVATION_TTL_MINUTES: "10"
+
+jobs:
+  backend:
+    name: Backend (build, lint, unit/int + e2e)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: gitweek
+          POSTGRES_PASSWORD: gitweek_dev
+          POSTGRES_DB: gitweek
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U gitweek -d gitweek"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Generate Prisma client
+        run: npx prisma generate --config prisma7.config.ts
+
+      - name: Apply migrations
+        run: npx prisma migrate deploy --config prisma7.config.ts
+
+      - name: Seed (admin + productos demo)
+        run: npx tsx prisma/seed.ts
+
+      - name: Build
+        run: npm run build
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit + integration tests (incl. concurrencia)
+        run: npm test
+
+      - name: End-to-end tests (incl. cola Redis + admin)
+        run: npm run test:e2e
+
+  docker:
+    name: Docker build (backend image)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: docker build -t git-week-2026-backend:ci backend/
