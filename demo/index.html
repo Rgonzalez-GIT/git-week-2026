@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GIT Week 2026 · Simulador de compra (modo demo)</title>
+<style>
+  :root{
+    --bg:#0d1420; --panel:#141d2e; --panel2:#1a2740; --line:#24344f;
+    --txt:#e8eef7; --mut:#9db1cd; --acc:#6c8cff; --ok:#2dd4a7; --err:#f87171;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--txt)}
+  header{display:flex;align-items:baseline;gap:14px;padding:18px 26px;border-bottom:1px solid var(--line);background:#101826}
+  header h1{font-size:20px;margin:0}
+  header .tag{color:var(--mut);font-size:12px}
+  main{display:grid;grid-template-columns:1fr 380px;gap:20px;padding:20px 26px;max-width:1280px;margin:0 auto}
+  @media(max-width:900px){main{grid-template-columns:1fr}}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+  section h2{margin:0 0 12px;font-size:15px;color:var(--acc)}
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+  .card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px}
+  .card .name{font-weight:600}
+  .card .desc{font-size:12px;color:var(--mut);min-height:32px}
+  .price{font-size:18px;font-weight:700;color:var(--ok)}
+  .price small{color:var(--mut);font-weight:400;font-size:12px}
+  .stock{font-size:12px;color:var(--mut)}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  input[type=number],input[type=text]{background:#0e1626;border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px 10px;width:76px}
+  button{background:var(--acc);border:0;color:#fff;border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:600}
+  button:hover{filter:brightness(1.1)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button.ghost{background:transparent;border:1px solid var(--line);color:var(--txt)}
+  button.ok{background:var(--ok);color:#062b21}
+  button.danger{background:#b02626}
+  ul{list-style:none;padding:0;margin:0}
+  .cart-line{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px dashed var(--line)}
+  .cart-line:last-child{border-bottom:0}
+  .subtotal{display:flex;justify-content:space-between;font-weight:700;margin-top:10px;border-top:1px solid var(--line);padding-top:10px}
+  .steps{margin-top:8px;display:flex;flex-direction:column;gap:8px}
+  .step{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px}
+  .step .title{font-weight:600;font-size:13px;display:flex;align-items:center;justify-content:space-between}
+  .step .title .state{font-size:11px;color:var(--mut)}
+  .step.done{border-color:#1f7a5f}
+  .codes{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+  .code{font-family:monospace;background:#0e1626;border:1px dashed var(--acc);padding:4px 10px;border-radius:6px;font-size:13px;cursor:pointer}
+  #log{font-family:Consolas,monospace;font-size:11px;background:#0a1020;border:1px solid var(--line);border-radius:8px;padding:10px;max-height:220px;overflow:auto;white-space:pre-wrap;color:#9fd3c7}
+  .err{color:var(--err)}
+  .hint{font-size:12px;color:var(--mut)}
+  table.sum{width:100%;border-collapse:collapse;margin-top:6px;font-size:13px}
+  table.sum td{padding:3px 0}
+  table.sum td:last-child{text-align:right;font-weight:600}
+  span.badge{background:#24344f;border-radius:20px;padding:2px 10px;font-size:11px;color:var(--mut)}
+</style>
+</head>
+<body>
+<header>
+  <h1>GIT Week 2026 · Simulador de compra</h1>
+  <span class="tag">modo demo (DEMO_MODE) · backend NestJS + PostgreSQL · sin pagos reales</span>
+</header>
+<main>
+  <div style="display:flex;flex-direction:column;gap:20px">
+    <section>
+      <h2>Catálogo</h2>
+      <div class="cards" id="products"></div>
+    </section>
+
+    <section>
+      <h2>Checkout del ítem seleccionado</h2>
+      <p class="hint">Cada compra inicia con una <b>reserva temporal</b> (10 min). El stock disponible ya resta lo reservado. Puedes aplicar un cupón antes de pagar.</p>
+      <div class="codes" id="codes"></div>
+      <div class="steps" id="steps">
+        <p class="hint">1) Agrega al carrito · 2) pulsa <b>Reservar y crear orden</b> en una línea del carrito · 3) aplica cupón (opcional) · 4) paga · 5) confirma el webhook sandbox.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>Registro de la sesión</h2>
+      <div id="log">—</div>
+    </section>
+  </div>
+
+  <aside>
+    <section>
+      <h2>Carrito de invitado <span class="badge" id="sessionLabel"></span></h2>
+      <div id="cartEmpty" class="hint">Vacío. Agrega productos desde el catálogo.</div>
+      <ul id="cart"></ul>
+      <div class="subtotal" id="subtotalWrap" style="display:none">
+        <span>Subtotal</span><span id="subtotal"></span>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        <button class="ghost" id="btnRefresh">Recargar catálogo</button>
+        <button class="danger" id="btnClear" style="display:none">Vaciar carrito</button>
+      </div>
+    </section>
+  </aside>
+</main>
+
+<script>
+(function () {
+  const API = '/api';
+  let sessionKey = localStorage.getItem('gw-demo-session');
+  if (!sessionKey) {
+    sessionKey = (crypto.randomUUID || function () { return 's-' + Date.now() + '-' + Math.random().toString(36).slice(2); }).call(crypto);
+    localStorage.setItem('gw-demo-session', sessionKey);
+  }
+  document.getElementById('sessionLabel').textContent = sessionKey;
+
+  const state = { products: [], cart: [], order: null, payment: null };
+
+  const $ = (id) => document.getElementById(id);
+  const sol = (cents) => 'S/ ' + (cents / 100).toFixed(2);
+
+  function log(msg, isErr) {
+    const box = $('log');
+    const text = typeof msg === 'string' ? msg : JSON.stringify(msg, null, 2);
+    box.textContent = (isErr ? '[error] ' : '[ok] ') + text + '\n' + box.textContent;
+    if (isErr) box.classList && false;
+  }
+
+  async function api(url, opts) {
+    const res = await fetch(API + url, Object.assign({ headers: { 'Content-Type': 'application/json' } }, opts));
+    const text = await res.text();
+    let body = null;
+    try { body = text ? JSON.parse(text) : null; } catch (_) { body = text; }
+    if (!res.ok) {
+      const err = new Error((body && (body.message || body.error)) || ('HTTP ' + res.status));
+      err.status = res.status;
+      err.body = body;
+      throw err;
+    }
+    return body;
+  }
+
+  async function loadProducts() {
+    try {
+      state.products = await api('/products');
+      renderProducts();
+    } catch (e) { log('No se pudo cargar el catálogo: ' + e.message, true); }
+  }
+
+  function renderProducts() {
+    const box = $('products');
+    box.innerHTML = '';
+    for (const p of state.products) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      const available = p.availableStock;
+      card.innerHTML =
+        '<div class="name">' + p.name + '</div>' +
+        '<div class="desc">' + (p.description || '') + '</div>' +
+        '<div class="price">' + sol(p.priceCents) + ' <small>por plan</small></div>' +
+        '<div class="stock">Disponible: <b>' + available + '</b></div>' +
+        '<div class="row"><input type="number" id="qty-' + p.id + '" min="1" max="' + available + '" value="1">' +
+        '<button data-add="' + p.id + '" ' + (available <= 0 ? 'disabled' : '') + '>Agregar al carrito</button></div>';
+      box.appendChild(card);
+    }
+  }
+
+  async function loadCart() {
+    try {
+      state.cart = (await api('/cart/session/' + encodeURIComponent(sessionKey))).items;
+    } catch (e) {
+      state.cart = [];
+      log(e.message, true);
+    }
+    renderCart();
+  }
+
+  function renderCart() {
+    const list = $('cart');
+    list.innerHTML = '';
+    $('cartEmpty').style.display = state.cart.length ? 'none' : 'block';
+    $('subtotalWrap').style.display = state.cart.length ? 'flex' : 'none';
+    $('btnClear').style.display = state.cart.length ? 'inline-block' : 'none';
+    let sub = 0;
+    for (const it of state.cart) {
+      sub += it.lineTotalCents;
+      const li = document.createElement('li');
+      li.className = 'cart-line';
+      li.innerHTML =
+        '<span><b>' + it.name + '</b><br><small class="stock">' + it.quantity + ' × ' + sol(it.priceCents) + '</small></span>' +
+        '<span style="white-space:nowrap">' + sol(it.lineTotalCents) +
+        '<br><button class="ghost" data-remove="' + it.productId + '" style="padding:4px 8px;font-size:11px">Quitar</button></span>' +
+        '<button class="ok" data-buy="' + it.productId + '" data-qty="' + it.quantity + '" data-price="' + it.priceCents + '">Reservar y crear orden</button>';
+      list.appendChild(li);
+    }
+    $('subtotal').textContent = sol(sub);
+  }
+
+  async function addToCart(productId, qty) {
+    try {
+      await api('/cart/session/' + encodeURIComponent(sessionKey) + '/items', {
+        method: 'POST',
+        body: JSON.stringify({ productId, quantity: qty }),
+      });
+      log('Agregado al carrito: producto ' + productId + ' × ' + qty);
+      await loadCart();
+    } catch (e) { log(e.message, true); }
+  }
+
+  async function removeFromCart(productId) {
+    try {
+      await api('/cart/session/' + encodeURIComponent(sessionKey) + '/items/' + productId, { method: 'DELETE' });
+      log('Quitado del carrito: producto ' + productId);
+      await loadCart();
+    } catch (e) { log(e.message, true); }
+  }
+
+  async function clearCart() {
+    try {
+      await api('/cart/session/' + encodeURIComponent(sessionKey), { method: 'DELETE' });
+      log('Carrito vaciado');
+      await loadCart();
+      resetOrderUI();
+    } catch (e) { log(e.message, true); }
+  }
+
+  function step(label, detail) {
+    const wrap = $('steps');
+    const div = document.createElement('div');
+    div.className = 'step done';
+    div.innerHTML = '<div class="title">' + label + ' <span class="state">✓</span></div>' + (detail ? '<div class="hint">' + detail + '</div>' : '');
+    wrap.insertBefore(div, wrap.firstChild);
+  }
+
+  async function checkout(productId, qty) {
+    try {
+      step('Reservando stock (Fase 4)…', productId + ' × ' + qty);
+      const r = await api('/demo/reservations', {
+        method: 'POST',
+        body: JSON.stringify({ productId, quantity: qty }),
+      });
+      const reservationId = r.reservation.publicId;
+      step('Reserva creada', reservationId);
+
+      const o = await api('/demo/orders', {
+        method: 'POST',
+        body: JSON.stringify({ reservationPublicId: reservationId }),
+      });
+      state.order = o;
+      step('Orden creada (idempotente)', o.publicId + ' · total ' + sol(o.totalCents));
+      renderOrder(false);
+      return o.publicId;
+    } catch (e) { log(e.message, true); return null; }
+  }
+
+  function renderOrder(couponApplied) {
+    const o = state.order;
+    if (!o) return;
+    const box = $('steps');
+    const div = document.createElement('div');
+    div.className = 'step';
+    div.id = 'orderPanel';
+    const rows =
+      '<tr><td>Subtotal</td><td>' + sol(o.subtotalCents) + '</td></tr>' +
+      '<tr><td>Descuento (cupón)</td><td>- ' + sol(o.discountCents) + '</td></tr>' +
+      '<tr><td><b>Total a pagar</b></td><td><b>' + sol(o.totalCents) + '</b></td></tr>';
+    div.innerHTML =
+      '<div class="title">Orden ' + o.publicId + ' <span class="state">' + o.status + '</span></div>' +
+      '<table class="sum">' + rows + '</table>' +
+      '<div class="row" style="margin-top:8px">' +
+      '<input type="text" id="couponInput" placeholder="Cupón (ej. URPxGIT)" style="width:150px">' +
+      '<button class="ghost" id="btnCoupon">Aplicar cupón</button>' +
+      '<button class="ok" id="btnPay">Pagar</button>' +
+      '<button class="ok" id="btnConfirm" disabled>Confirmar webhook</button>' +
+      '</div>';
+    box.insertBefore(div, box.firstChild);
+
+    $('btnCoupon').addEventListener('click', async () => {
+      const code = $('couponInput').value.trim();
+      if (!code) return;
+      try {
+        const res = await api('/demo/coupons/apply', {
+          method: 'POST',
+          body: JSON.stringify({ orderPublicId: o.publicId, code }),
+        });
+        log('Cupón aplicado: ' + code + ' → ' + sol(res.discountCents) + ' off');
+        state.order.discountCents = res.discountCents;
+        state.order.totalCents = res.totalCents;
+        document.getElementById('orderPanel').remove();
+        renderOrder(true);
+      } catch (e) { log(e.message, true); }
+    });
+
+    $('btnPay').addEventListener('click', async () => {
+      try {
+        const p = await api('/demo/payments', {
+          method: 'POST',
+          body: JSON.stringify({ orderPublicId: o.publicId }),
+        });
+        state.payment = p;
+        step('Pago creado (PENDING)', p.publicId + ' · monto ' + sol(p.amountCents));
+        const confirmBtn = document.getElementById('btnConfirm');
+        if (confirmBtn) confirmBtn.disabled = false;
+      } catch (e) { log(e.message, true); }
+    });
+
+    $('btnConfirm').addEventListener('click', async () => {
+      try {
+        const res = await api('/demo/payments/confirm', {
+          method: 'POST',
+          body: JSON.stringify({ orderPublicId: o.publicId, success: true }),
+        });
+        log('Webhook confirmado → pago ' + res.payment.status + ' · orden ' + res.order.status);
+        step('¡Pago confirmado! Orden ' + res.order.status, 'La reserva fue convertida y el stock vendido.');
+        if (state.cart.length) {
+          for (const it of state.cart) {
+            await api('/cart/session/' + encodeURIComponent(sessionKey) + '/items/' + it.productId, { method: 'DELETE' });
+          }
+          await loadCart();
+        }
+        await loadProducts();
+        resetOrderUI();
+      } catch (e) { log(e.message, true); }
+    });
+  }
+
+  function resetOrderUI() {
+    state.order = null;
+    state.payment = null;
+    const panel = document.getElementById('orderPanel');
+    if (panel) panel.remove();
+  }
+
+  async function loadCodes() {
+    try {
+      const codes = await api('/coupons');
+      $('codes').innerHTML = 'Cupones activos: ' + codes.map((c) => '<span class="code" data-code="' + c.code + '">' + c.code + '</span>').join(' ');
+      document.querySelectorAll('.code').forEach((el) => el.addEventListener('click', () => {
+        const input = $('couponInput');
+        if (input) { input.value = el.dataset.code; }
+      }));
+    } catch (e) { log(e.message, true); }
+  }
+
+  document.addEventListener('click', (ev) => {
+    const add = ev.target.closest('[data-add]');
+    if (add) {
+      const id = Number(add.dataset.add);
+      const qty = Number($('qty-' + id).value || 1);
+      addToCart(id, qty);
+      return;
+    }
+    const remove = ev.target.closest('[data-remove]');
+    if (remove) { removeFromCart(Number(remove.dataset.remove)); return; }
+    const buy = ev.target.closest('[data-buy]');
+    if (buy) {
+      const id = Number(buy.dataset.buy);
+      const qty = Number(buy.dataset.qty);
+      checkout(id, qty);
+    }
+  });
+
+  $('btnRefresh').addEventListener('click', () => { loadProducts(); loadCart(); });
+  $('btnClear').addEventListener('click', clearCart);
+
+  loadProducts();
+  loadCart();
+  loadCodes();
+})();
+</script>
+</body>
+</html>
