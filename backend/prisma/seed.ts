@@ -110,11 +110,58 @@ async function main() {
     },
   });
 
+  const seedCoupons = [
+    {
+      code: 'URPxGIT',
+      name: 'Descuento URP',
+      description: 'Código comunitario URP · S/5 de descuento (500 centavos)',
+    },
+    {
+      code: 'UTPxGIT',
+      name: 'Descuento UTP',
+      description: 'Código comunitario UTP · S/5 de descuento (500 centavos)',
+    },
+    {
+      code: 'UNABxGIT',
+      name: 'Descuento UNAB',
+      description: 'Código comunitario UNAB · S/5 de descuento (500 centavos)',
+    },
+  ];
+
+  const DISCOUNT_FIXED_CENTS = 500;
+  const now = new Date();
+  const endsAt = new Date(now.getTime() + 365 * 2 * 24 * 3600 * 1000);
+
+  for (const coupon of seedCoupons) {
+    await prisma.promotion.upsert({
+      where: { code: coupon.code },
+      update: { name: coupon.name, description: coupon.description },
+      create: {
+        publicId: `prm-${coupon.code.toLowerCase()}`,
+        code: coupon.code,
+        name: coupon.name,
+        description: coupon.description,
+        discountType: 'FIXED_AMOUNT',
+        discountValue: DISCOUNT_FIXED_CENTS,
+        maxRedemptions: null,
+        startsAt: now,
+        endsAt,
+        status: 'ACTIVE',
+        issuesCouponOnPaid: true,
+        couponValidityHours: 720,
+      },
+    });
+  }
+
   console.log('Seed completado.');
   console.log(`Usuarios demo (contraseña ${DEV_ADMIN_PASSWORD} - SOLO desarrollo):`);
   console.log('  admin@gitweek.local (ADMIN)');
   console.log('  customer@gitweek.local (CUSTOMER)');
   console.log('  staff@gitweek.local (STAFF)');
+  console.log(`Cupones activos (S/${DISCOUNT_FIXED_CENTS / 100}):`);
+  for (const coupon of seedCoupons) {
+    console.log(`  ${coupon.code} - ${coupon.name}`);
+  }
 }
 
 main()

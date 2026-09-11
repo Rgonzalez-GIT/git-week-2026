@@ -242,6 +242,88 @@
     box-shadow:0 10px 24px rgba(201,162,75,0.55);
   }
 
+  /* ===== CARRITO / TIENDA ===== */
+  .tienda-layout{
+    display:grid;grid-template-columns:1fr 340px;gap:24px;align-items:start;
+  }
+  @media(max-width:860px){.tienda-layout{grid-template-columns:1fr;}}
+  .tienda-catalogo{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;}
+  .producto-card{
+    background:var(--crema-2);border:1px solid rgba(122,27,43,0.12);border-radius:12px;
+    padding:18px;display:flex;flex-direction:column;gap:6px;
+  }
+  .producto-card h4{font-size:16px;color:var(--azul-dark);margin:0;}
+  .producto-card .desc{font-size:13px;color:var(--texto-secundario);min-height:20px;}
+  .producto-card .precio{font-size:20px;font-weight:700;color:var(--guinda);}
+  .producto-card .precio small{font-size:12px;color:var(--texto-secundario);font-weight:400;}
+  .producto-card .stock-msg{font-size:12px;color:var(--texto-secundario);}
+  .producto-card .stock-msg.agotado{color:var(--guinda);font-weight:600;}
+  .producto-card .row{display:flex;gap:8px;align-items:center;margin-top:6px;}
+  .producto-card input[type=number]{
+    width:52px;padding:6px 8px;border:1px solid rgba(122,27,43,0.2);border-radius:6px;
+    font-size:14px;text-align:center;background:#fff;
+  }
+  .btn-carrito{
+    display:inline-block;background:var(--dorado);color:var(--azul-dark);
+    border:0;border-radius:8px;padding:8px 14px;font-weight:600;font-size:13px;
+    cursor:pointer;transition:background 0.2s;
+  }
+  .btn-carrito:hover{background:#b8933f;}
+  .btn-carrito:disabled{opacity:.45;cursor:not-allowed;}
+
+  /* Sidebar carrito */
+  .carrito-sidebar{
+    background:var(--crema-2);border:1px solid rgba(122,27,43,0.12);
+    border-radius:14px;padding:20px;position:sticky;top:90px;
+  }
+  .carrito-sidebar h3{font-size:17px;color:var(--guinda);margin:0 0 12px;}
+  .carrito-sidebar .vacio{font-size:13px;color:var(--texto-secundario);}
+  .carrito-linea{
+    display:flex;justify-content:space-between;align-items:center;
+    border-bottom:1px dashed rgba(122,27,43,0.15);padding:8px 0;font-size:14px;
+  }
+  .carrito-linea:last-child{border-bottom:0;}
+  .carrito-linea .item-nombre{flex:1;}
+  .carrito-linea .item-cant{margin:0 8px;color:var(--texto-secundario);font-size:13px;}
+  .carrito-linea .item-precio{font-weight:600;white-space:nowrap;}
+  .carrito-linea .btn-remover{
+    background:none;border:0;color:var(--guinda);font-size:18px;cursor:pointer;
+    line-height:1;padding:0 4px;
+  }
+  .carrito-subtotal{
+    display:flex;justify-content:space-between;font-weight:700;font-size:15px;
+    border-top:2px solid rgba(122,27,43,0.15);padding-top:10px;margin-top:8px;
+  }
+  .carrito-acciones{display:flex;flex-direction:column;gap:8px;margin-top:12px;}
+  .btn-reservar{
+    display:block;width:100%;background:var(--azul);color:#fff;border:0;
+    border-radius:8px;padding:12px;font-weight:600;font-size:15px;cursor:pointer;
+    text-align:center;transition:background 0.2s;
+  }
+  .btn-reservar:hover{background:var(--azul-dark);}
+  .btn-reservar:disabled{opacity:.45;cursor:not-allowed;}
+  .checkout-estado{
+    background:rgba(29,78,137,0.08);border-radius:8px;padding:12px;
+    font-size:13px;color:var(--azul-dark);margin-top:8px;
+  }
+  .checkout-estado .paso{padding:3px 0;display:flex;justify-content:space-between;}
+  .checkout-estado .paso.ok{color:#2d7a50;}
+  .checkout-estado .paso.pend{color:var(--texto-secundario);}
+  .cupon-row{display:flex;gap:6px;margin-top:6px;}
+  .cupon-row input{
+    flex:1;padding:7px 10px;border:1px solid rgba(122,27,43,0.2);border-radius:6px;font-size:13px;
+  }
+  .btn-cupon{
+    background:var(--crema);border:1px solid var(--azul);color:var(--azul);
+    border-radius:6px;padding:7px 12px;font-size:13px;font-weight:600;cursor:pointer;
+  }
+  .btn-pagar{
+    background:var(--dorado);color:var(--azul-dark);border:0;border-radius:8px;
+    padding:12px;font-weight:700;font-size:15px;cursor:pointer;
+  }
+  .btn-pagar:disabled{opacity:.45;cursor:not-allowed;}
+  .confirmar-msg{font-size:13px;color:var(--guinda);margin-top:6px;}
+
   /* ===== FOOTER ===== */
   footer{
     background:var(--azul-dark);color:#E4EAF2;padding:60px 40px 30px;
@@ -585,6 +667,41 @@
   </div>
 </section>
 
+<!-- ===== TIENDA ===== -->
+<section id="tienda">
+  <p class="section-eyebrow">Tienda</p>
+  <h2>Compra tu plan</h2>
+  <p class="section-desc">Selecciona un plan de los productos disponibles, agrégalo al carrito y completa tu pago. Puedes aplicar un cupón de descuento.</p>
+
+  <div class="tienda-layout">
+    <div>
+      <div class="tienda-catalogo" id="tienda-productos">
+        <p style="color:var(--texto-secundario);font-size:14px;">Cargando productos…</p>
+      </div>
+    </div>
+
+    <div class="carrito-sidebar" id="carrito-sidebar">
+      <h3>🛒 Mi carrito</h3>
+      <div id="carrito-vacio" class="vacio">Vacío. Agrega un plan desde la tienda.</div>
+      <ul id="carrito-items" style="list-style:none;padding:0;margin:0;"></ul>
+      <div class="carrito-subtotal" id="carrito-subtotal" style="display:none">
+        <span>Subtotal</span><span id="carrito-total">S/ 0.00</span>
+      </div>
+      <div class="carrito-acciones" id="carrito-acciones" style="display:none">
+        <button class="btn-reservar" id="btn-reservar">Reservar y crear orden</button>
+        <div class="cupon-row" id="cupon-row" style="display:none">
+          <input type="text" id="cupon-input" placeholder="Cupón (ej. URPxGIT)">
+          <button class="btn-cupon" id="btn-cupon">Aplicar</button>
+        </div>
+        <button class="btn-pagar" id="btn-pagar" disabled>Pagar</button>
+        <div class="checkout-estado" id="checkout-estado" style="display:none"></div>
+        <button class="btn-reservar" id="btn-confirmar" disabled style="background:var(--dorado);margin-top:4px;">Confirmar pago</button>
+        <div class="confirmar-msg" id="confirmar-msg" style="display:none"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ===== FOOTER ===== -->
 <footer id="contacto">
   <div class="footer-logos">
@@ -762,6 +879,230 @@
       card.classList.toggle("is-flipped");
     });
   });
+
+  // ===== TIENDA / CARRITO =====
+  (function () {
+    const API = '/api';
+    let sessionKey = localStorage.getItem('gw-session');
+    if (!sessionKey) {
+      sessionKey = (crypto.randomUUID || function () { return 's-' + Date.now() + '-' + Math.random().toString(36).slice(2); }).call(crypto);
+      localStorage.setItem('gw-session', sessionKey);
+    }
+
+    const tienda = { products: [], cart: [], order: null, payment: null };
+    const sol = (c) => 'S/ ' + (c / 100).toFixed(2);
+
+    async function api(url, opts) {
+      const res = await fetch(API + url, Object.assign({ headers: { 'Content-Type': 'application/json' } }, opts));
+      const txt = await res.text();
+      let body = null;
+      try { body = txt ? JSON.parse(txt) : null; } catch (_) { body = txt; }
+      if (!res.ok) throw new Error((body && (body.message || body.error)) || ('HTTP ' + res.status));
+      return body;
+    }
+
+    async function loadProducts() {
+      try {
+        tienda.products = await api('/products');
+        renderProducts();
+      } catch (e) {
+        document.getElementById('tienda-productos').innerHTML = '<p style="color:var(--guinda);font-size:14px;">No se pudieron cargar los productos.</p>';
+      }
+    }
+
+    function renderProducts() {
+      const box = document.getElementById('tienda-productos');
+      box.innerHTML = '';
+      for (const p of tienda.products) {
+        const card = document.createElement('div');
+        card.className = 'producto-card';
+        const agotado = p.availableStock <= 0;
+        card.innerHTML =
+          '<h4>' + p.name + '</h4>' +
+          '<div class="desc">' + (p.description || '') + '</div>' +
+          '<div class="precio">' + sol(p.priceCents) + ' <small>/ plan</small></div>' +
+          '<div class="stock-msg ' + (agotado ? 'agotado' : '') + '">' +
+            (agotado ? 'Agotado' : 'Disponible: ' + p.availableStock) + '</div>' +
+          (agotado ? '' :
+            '<div class="row">' +
+            '<input type="number" id="tqty-' + p.id + '" min="1" max="' + p.availableStock + '" value="1">' +
+            '<button class="btn-carrito" data-tadd="' + p.id + '">Agregar</button>' +
+            '</div>');
+        box.appendChild(card);
+      }
+    }
+
+    async function loadCart() {
+      try {
+        tienda.cart = (await api('/cart/session/' + encodeURIComponent(sessionKey))).items;
+      } catch (e) { tienda.cart = []; }
+      renderCart();
+    }
+
+    function renderCart() {
+      const list = document.getElementById('carrito-items');
+      const vacio = document.getElementById('carrito-vacio');
+      const sub = document.getElementById('carrito-subtotal');
+      const acc = document.getElementById('carrito-acciones');
+      list.innerHTML = '';
+      const items = tienda.cart;
+      vacio.style.display = items.length ? 'none' : 'block';
+      sub.style.display = items.length ? 'flex' : 'none';
+      acc.style.display = items.length ? 'flex' : 'none';
+      let total = 0;
+      for (const it of items) {
+        total += it.lineTotalCents;
+        const li = document.createElement('li');
+        li.className = 'carrito-linea';
+        li.innerHTML =
+          '<span class="item-nombre">' + it.name + '</span>' +
+          '<span class="item-cant">' + it.quantity + ' x ' + sol(it.priceCents) + '</span>' +
+          '<span class="item-precio">' + sol(it.lineTotalCents) + '</span>' +
+          '<button class="btn-remover" title="Quitar" data-trem="' + it.productId + '">&times;</button>';
+        list.appendChild(li);
+      }
+      document.getElementById('carrito-total').textContent = sol(total);
+    }
+
+    async function addToCart(productId, qty) {
+      try {
+        await api('/cart/session/' + encodeURIComponent(sessionKey) + '/items', {
+          method: 'POST', body: JSON.stringify({ productId, quantity: qty })
+        });
+        await loadCart();
+      } catch (e) { console.error(e); }
+    }
+
+    async function removeFromCart(productId) {
+      try {
+        await api('/cart/session/' + encodeURIComponent(sessionKey) + '/items/' + productId, { method: 'DELETE' });
+        await loadCart();
+      } catch (e) { console.error(e); }
+    }
+
+    function addStatus paso(label, ok) {
+      const box = document.getElementById('checkout-estado');
+      const div = document.createElement('div');
+      div.className = 'paso ' + (ok ? 'ok' : 'pend');
+      div.innerHTML = '<span>' + label + '</span><span>' + (ok ? '✓' : '…') + '</span>';
+      box.prepend(div);
+    }
+
+    function resetCheckout() {
+      tienda.order = null;
+      tienda.payment = null;
+      const box = document.getElementById('checkout-estado');
+      if (box) box.innerHTML = '';
+      document.getElementById('cupon-row').style.display = 'none';
+      document.getElementById('btn-pagar').disabled = true;
+      document.getElementById('btn-confirmar').disabled = true;
+      document.getElementById('btn-reservar').disabled = false;
+      document.getElementById('confirmar-msg').style.display = 'none';
+    }
+
+    document.addEventListener('click', (ev) => {
+      const add = ev.target.closest('[data-tadd]');
+      if (add) {
+        const id = Number(add.dataset.tadd);
+        const qty = Number(document.getElementById('tqty-' + id).value || 1);
+        addToCart(id, qty);
+        return;
+      }
+      const rem = ev.target.closest('[data-trem]');
+      if (rem) { removeFromCart(Number(rem.dataset.trem)); return; }
+    });
+
+    document.getElementById('btn-reservar').addEventListener('click', async () => {
+      const item = tienda.cart[0];
+      if (!item) return;
+      const btn = document.getElementById('btn-reservar');
+      btn.disabled = true;
+      btn.textContent = 'Reservando…';
+      const box = document.getElementById('checkout-estado');
+      box.style.display = 'block';
+      box.innerHTML = '';
+      try {
+        addStatus('Reservando stock…', false);
+        const r = await api('/demo/reservations', {
+          method: 'POST', body: JSON.stringify({ productId: item.productId, quantity: item.quantity })
+        });
+        addStatus('Reserva creada', true);
+
+        addStatus('Creando orden…', false);
+        const o = await api('/demo/orders', {
+          method: 'POST', body: JSON.stringify({ reservationPublicId: r.reservation.publicId })
+        });
+        tienda.order = o;
+        addStatus('Orden ' + o.publicId.slice(0, 8) + '…', true);
+
+        document.getElementById('cupon-row').style.display = 'flex';
+        document.getElementById('btn-pagar').disabled = false;
+        btn.textContent = 'Reservar y crear orden';
+      } catch (e) {
+        addStatus('Error: ' + e.message, false);
+        btn.disabled = false;
+        btn.textContent = 'Reservar y crear orden';
+      }
+    });
+
+    document.getElementById('btn-cupon').addEventListener('click', async () => {
+      if (!tienda.order) return;
+      const code = document.getElementById('cupon-input').value.trim();
+      if (!code) return;
+      try {
+        const res = await api('/demo/coupons/apply', {
+          method: 'POST', body: JSON.stringify({ orderPublicId: tienda.order.publicId, code })
+        });
+        addStatus('Cupón ' + code + ': -' + sol(res.discountCents), true);
+        tienda.order.totalCents = res.totalCents;
+      } catch (e) { addStatus('Cupón: ' + e.message, false); }
+    });
+
+    document.getElementById('btn-pagar').addEventListener('click', async () => {
+      if (!tienda.order) return;
+      const btn = document.getElementById('btn-pagar');
+      btn.disabled = true;
+      btn.textContent = 'Procesando…';
+      try {
+        const p = await api('/demo/payments', {
+          method: 'POST', body: JSON.stringify({ orderPublicId: tienda.order.publicId })
+        });
+        tienda.payment = p;
+        addStatus('Pago creado (PENDING)', true);
+        document.getElementById('btn-confirmar').disabled = false;
+        btn.textContent = 'Pagar';
+      } catch (e) {
+        addStatus('Pago: ' + e.message, false);
+        btn.disabled = false;
+        btn.textContent = 'Pagar';
+      }
+    });
+
+    document.getElementById('btn-confirmar').addEventListener('click', async () => {
+      if (!tienda.order) return;
+      const btn = document.getElementById('btn-confirmar');
+      btn.disabled = true;
+      btn.textContent = 'Confirmando…';
+      try {
+        const res = await api('/demo/payments/confirm', {
+          method: 'POST', body: JSON.stringify({ orderPublicId: tienda.order.publicId, success: true })
+        });
+        addStatus('¡Pago confirmado! Orden ' + res.order.status, true);
+        document.getElementById('confirmar-msg').style.display = 'block';
+        document.getElementById('confirmar-msg').textContent = 'Tu compra fue registrada exitosamente.';
+        resetCheckout();
+        await loadProducts();
+        await loadCart();
+      } catch (e) {
+        addStatus('Confirmación: ' + e.message, false);
+        btn.disabled = false;
+        btn.textContent = 'Confirmar pago';
+      }
+    });
+
+    loadProducts();
+    loadCart();
+  })();
 </script>
 
 </body>

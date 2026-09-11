@@ -124,6 +124,11 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  refreshTokenHash      String?
+  refreshTokenExpiresAt DateTime?
+  failedLogins          Int          @default(0)
+  lockoutUntil          DateTime?
+
   orders        Order[]
   reservations  InventoryReservation[]
   cartItems     CartItem[]
@@ -184,6 +189,7 @@ model Inventory {
 model Promotion {
   id                  Int            @id @default(autoincrement())
   publicId            String         @unique
+  code                String?        @unique
   name                String
   description         String?
   productId           Int?
@@ -242,6 +248,7 @@ model Order {
   status           OrderStatus @default(PENDING)
   subtotalCents    Int
   discountCents    Int         @default(0)
+  discountCode     String?
   totalCents       Int
   currency         String      @default("PEN")
   paidAt           DateTime?
