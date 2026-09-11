@@ -1,8 +1,9 @@
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Param, Post, UseGuards } from '@nestjs/common';
 import { DemoService } from './demo.service.js';
 import { DemoEnabledGuard } from './demo.guard.js';
 import {
   ApplyCouponDemoDto,
+  BuyerDemoDto,
   ConfirmPaymentDemoDto,
   CreateOrderDemoDto,
   CreatePaymentDemoDto,
@@ -32,6 +33,11 @@ export class DemoController {
   @Post('coupons/apply')
   aplicarCupon(@Body() dto: ApplyCouponDemoDto) {
     return this.demoService.applyCoupon(dto.orderPublicId, dto.code);
+  }
+
+  @Post('orders/:publicId/buyer')
+  registrarComprador(@Param('publicId') publicId: string, @Body() dto: BuyerDemoDto) {
+    return this.demoService.setBuyer(publicId, dto);
   }
 
   @Post('payments')

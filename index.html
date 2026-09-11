@@ -338,6 +338,27 @@
   .btn-pagar:disabled{opacity:.45;cursor:not-allowed;}
   .confirmar-msg{font-size:13px;color:var(--guinda);margin-top:6px;}
 
+  .buyer-box{border:1px solid rgba(29,78,137,0.2);border-radius:8px;padding:10px;margin-top:8px;display:none;flex-direction:column;gap:6px;}
+  .buyer-box label{font-size:11px;font-weight:700;color:var(--azul);text-transform:uppercase;letter-spacing:.02em;}
+  .buyer-box input{
+    padding:7px 10px;border:1px solid rgba(122,27,43,0.2);border-radius:6px;font-size:13px;width:100%;
+  }
+  .buyer-nota{font-size:11px;color:var(--texto-secundario);}
+  .btn-guardar{
+    background:var(--azul);color:#fff;border:0;border-radius:6px;
+    padding:8px 12px;font-size:13px;font-weight:700;cursor:pointer;
+  }
+  .gateway-box{border:1px solid var(--dorado);border-radius:8px;padding:10px;margin-top:8px;display:none;font-size:13px;color:var(--azul-dark);}
+  .gateway-box a{color:var(--guinda);font-weight:700;}
+  .talon{border:1px solid rgba(45,122,80,0.4);background:rgba(45,122,80,0.06);border-radius:8px;padding:10px;margin-top:8px;font-size:12px;}
+  .talon .ticket{
+    display:flex;justify-content:space-between;align-items:center;gap:8px;
+    border:1px dashed rgba(45,122,80,0.45);border-radius:6px;padding:7px 9px;margin-top:6px;background:#fff;
+  }
+  .talon .ticket b{letter-spacing:.03em;color:var(--azul-dark);}
+  .talon .ticket .asignable{color:var(--texto-secundario);font-size:11px;}
+  .talon .ticket .ok-tag{color:#2d7a50;font-weight:700;font-size:11px;white-space:nowrap;}
+
   /* ===== FOOTER ===== */
   footer{
     background:var(--azul-dark);color:#E4EAF2;padding:60px 40px 30px;
@@ -708,8 +729,25 @@
           <input type="text" id="cupon-input" placeholder="Ingresa tu código de cupón" autocomplete="off">
           <button class="btn-cupon" id="btn-cupon">Aplicar</button>
         </div>
+        <div class="buyer-box" id="buyer-box">
+          <label for="b-first">Nombres</label>
+          <input id="b-first" placeholder="Nombres" autocomplete="given-name">
+          <label for="b-last">Apellidos</label>
+          <input id="b-last" placeholder="Apellidos" autocomplete="family-name">
+          <label for="b-email">Correo electrónico</label>
+          <input id="b-email" type="email" placeholder="correo@ejemplo.com" autocomplete="email">
+          <label for="b-phone">Teléfono</label>
+          <input id="b-phone" type="tel" placeholder="9XX XXX XXX" autocomplete="tel">
+          <div class="buyer-nota">Si compras 2 o más entradas, estos datos son del líder del grupo.</div>
+          <div class="row">
+            <label style="font-size:11px;color:var(--texto-secundario);margin-right:4px;">DNI (opcional)</label>
+            <input id="b-dni" placeholder="12345678" inputmode="numeric" maxlength="12" style="max-width:160px;">
+          </div>
+          <button class="btn-guardar" id="btn-buyer" disabled>Guardar datos</button>
+        </div>
         <button class="btn-pagar" id="btn-pagar" disabled>Pagar</button>
         <div class="cuenta-regresiva" id="cuenta-regresiva" style="display:none"></div>
+        <div class="gateway-box" id="gateway-box"></div>
         <div class="checkout-estado" id="checkout-estado" style="display:none"></div>
         <button class="btn-reservar" id="btn-confirmar" disabled style="background:var(--dorado);margin-top:4px;">Confirmar pago</button>
         <div class="confirmar-msg" id="confirmar-msg" style="display:none"></div>
@@ -905,7 +943,7 @@
       localStorage.setItem('gw-session', sessionKey);
     }
 
-    const tienda = { products: [], cart: [], order: null, payment: null, expiresAt: null };
+    const tienda = { products: [], cart: [], order: null, payment: null, checkout: null, buyer: null, expiresAt: null };
     const sol = (c) => 'S/ ' + (c / 100).toFixed(2);
 
     let countdownTimer = null;
@@ -1047,6 +1085,8 @@
     function resetCheckout() {
       tienda.order = null;
       tienda.payment = null;
+      tienda.checkout = null;
+      tienda.buyer = null;
       tienda.expiresAt = null;
       clearCountdown();
       const cr = document.getElementById('cuenta-regresiva');
@@ -1054,11 +1094,52 @@
       const box = document.getElementById('checkout-estado');
       if (box) box.innerHTML = '';
       document.getElementById('cupon-row').style.display = 'none';
+      document.getElementById('buyer-box').style.display = 'none';
+      document.getElementById('gateway-box').style.display = 'none';
       document.getElementById('btn-pagar').disabled = true;
       document.getElementById('btn-confirmar').disabled = true;
       document.getElementById('btn-reservar').disabled = false;
       document.getElementById('confirmar-msg').style.display = 'none';
       aviso('');
+    }
+
+    function renderTalon(codes) {
+      const items = codes.map((t) => {
+        if (t.buyerFullName) {
+          return '<div class="ticket"><span><b>' + t.code + '</b></span><span class="ok-tag">A nombre de ' + t.buyerFullName + '</span></div>';
+        }
+        return '<div class="ticket"><span><b>' + t.code + '</b></span><span class="asignable">Por asignar: el staff te contactará</span></div>';
+      }).join('');
+      return '<div class="talon"><b>Tus códigos de entrada (' + codes.length + ')' + '</b><br><span class="buyer-nota">Guárdalos, se presentarán al ingreso.</span>' + items + '</div>';
+    }
+
+    function renderGatewayCheckout(checkout) {
+      const box = document.getElementById('gateway-box');
+      box.innerHTML = '';
+      if (!checkout) { box.style.display = 'none'; return; }
+      const nombre = checkout.formToken ? 'Izipay' : 'Niubiz';
+      const html =
+        '<b>Pago con ' + nombre + '</b>' +
+        (checkout.redirectUrl
+          ? ' <a href="' + checkout.redirectUrl + '" target="_blank" rel="noopener">Abrir formulario de pago</a>.'
+          : ' Formulario de pago listo.') +
+        '<div class="buyer-nota" style="margin-top:4px;">En el demo el pago real no se simula: usa "Confirmar pago" (webhook simulado).</div>';
+      box.innerHTML = html;
+      box.style.display = 'block';
+      if (checkout.checkoutScriptUrl) {
+        const s = document.createElement('script');
+        s.src = checkout.checkoutScriptUrl;
+        s.onload = () => {
+          try {
+            if (checkout.formToken && window.KsCheckout) {
+              window.KsCheckout.configure && window.KsCheckout.configure({ formToken: checkout.formToken, publicKey: checkout.publicKey });
+            } else if (checkout.sessionKey && window.Checkout) {
+              window.Checkout.configure({ sessionKey: checkout.sessionKey, merchantId: checkout.merchantId });
+            }
+          } catch (err) { console.warn('Pasarela lista pero no se pudo instanciar:', err); }
+        };
+        document.body.appendChild(s);
+      }
     }
 
     document.addEventListener('click', (ev) => {
@@ -1099,6 +1180,8 @@
         addStatus('Orden ' + o.publicId.slice(0, 8) + '…', true);
 
         document.getElementById('cupon-row').style.display = 'flex';
+        document.getElementById('buyer-box').style.display = 'flex';
+        document.getElementById('btn-buyer').disabled = false;
         document.getElementById('btn-pagar').disabled = false;
         btn.textContent = 'Reservar y crear orden';
       } catch (e) {
@@ -1121,17 +1204,46 @@
       } catch (e) { addStatus('Cupón: ' + e.message, false); }
     });
 
+    document.getElementById('btn-buyer').addEventListener('click', async () => {
+      if (!tienda.order) return;
+      const b = {
+        firstName: document.getElementById('b-first').value.trim(),
+        lastName: document.getElementById('b-last').value.trim(),
+        email: document.getElementById('b-email').value.trim(),
+        phone: document.getElementById('b-phone').value.trim(),
+        docNumber: document.getElementById('b-dni').value.trim() || undefined
+      };
+      if (!b.firstName || !b.lastName || !/^\S+@\S+\.\S+$/.test(b.email) || !b.phone) {
+        addStatus('Completa nombres, apellidos, correo y teléfono', false);
+        return;
+      }
+      try {
+        await api('/demo/orders/' + tienda.order.publicId + '/buyer', {
+          method: 'POST', body: JSON.stringify(b)
+        });
+        tienda.buyer = b;
+        addStatus('Datos del comprador guardados', true);
+        document.getElementById('btn-buyer').disabled = true;
+      } catch (e) { addStatus('Datos: ' + e.message, false); }
+    });
+
     document.getElementById('btn-pagar').addEventListener('click', async () => {
       if (!tienda.order) return;
+      if (!tienda.buyer) {
+        addStatus('Guarda primero tus datos de comprador', false);
+        return;
+      }
       const btn = document.getElementById('btn-pagar');
       btn.disabled = true;
       btn.textContent = 'Procesando…';
       try {
-        const p = await api('/demo/payments', {
+        const r = await api('/demo/payments', {
           method: 'POST', body: JSON.stringify({ orderPublicId: tienda.order.publicId })
         });
-        tienda.payment = p;
+        tienda.payment = r.payment;
+        tienda.checkout = r.checkout || null;
         addStatus('Pago creado (PENDING)', true);
+        renderGatewayCheckout(tienda.checkout);
         document.getElementById('btn-confirmar').disabled = false;
         btn.textContent = 'Pagar';
       } catch (e) {
@@ -1159,7 +1271,12 @@
         addStatus('¡Pago confirmado! Orden ' + res.order.status, true);
         const confirmMsg = document.getElementById('confirmar-msg');
         confirmMsg.style.display = 'block';
-        confirmMsg.textContent = 'Tu compra fue registrada exitosamente. ¡Disfruta del GIT Week 2026!';
+        const codes = res.ticketCodes || [];
+        if (codes.length) {
+          confirmMsg.innerHTML = '<b>Tu compra fue registrada exitosamente. ¡Disfruta del GIT Week 2026!</b><br>' + renderTalon(codes);
+        } else {
+          confirmMsg.textContent = 'Tu compra fue registrada exitosamente. ¡Disfruta del GIT Week 2026!';
+        }
         const purchasedProductId = tienda.order.items?.[0]?.productId ?? tienda.cart[0]?.productId;
         resetCheckout();
         if (purchasedProductId) {

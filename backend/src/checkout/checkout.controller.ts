@@ -1,9 +1,9 @@
-import { Body, Controller, Get, Headers, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Post, Put, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { OrderService } from '../orders/order.service.js';
 import { ReservationService } from '../reservations/reservation.service.js';
-import { CheckoutOrderDto } from './checkout.dto.js';
+import { BuyerCheckoutDto, CheckoutOrderDto } from './checkout.dto.js';
 
 /**
  * Fase 11 - APIs de compra con autenticación.
@@ -37,5 +37,14 @@ export class CheckoutController {
   @Get(':publicId')
   async get(@CurrentUser('sub') userId: number, @Param('publicId') publicId: string) {
     return this.orders.findOwnedByPublicId(publicId, userId);
+  }
+
+  @Put(':publicId/buyer')
+  async setBuyer(
+    @CurrentUser('sub') userId: number,
+    @Param('publicId') publicId: string,
+    @Body() dto: BuyerCheckoutDto,
+  ) {
+    return this.orders.setBuyer(userId, publicId, dto);
   }
 }

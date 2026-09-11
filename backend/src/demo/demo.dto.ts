@@ -1,4 +1,4 @@
-import { IsBoolean, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsBoolean, IsEmail, IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator';
 
 export class CreateReservationDemoDto {
   @IsInt()
@@ -22,6 +22,32 @@ export class ApplyCouponDemoDto {
 
   @IsString()
   code!: string;
+}
+
+/** Datos del comprador (individual) o del líder del grupo. */
+export class BuyerDemoDto {
+  @IsString()
+  @IsNotEmpty()
+  firstName!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  lastName!: string;
+
+  @IsEmail()
+  email!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  phone!: string;
+
+  @IsOptional()
+  @IsString()
+  docType?: string;
+
+  @IsOptional()
+  @IsString()
+  docNumber?: string;
 }
 
 export class CreatePaymentDemoDto {

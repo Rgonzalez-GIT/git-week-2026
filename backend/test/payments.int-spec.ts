@@ -9,6 +9,7 @@ import { OrderService } from '../src/orders/order.service.js';
 import { PaymentService } from '../src/payments/payment.service.js';
 import { PaymentProvider, PaymentStatus } from '../src/generated/prisma/enums.js';
 import { CouponRewardService } from '../src/coupons/coupon-reward.service.js';
+import { TicketCodeService } from '../src/tickets/ticket-code.service.js';
 
 /**
  * Fase 6/16 - Test de integracion de pagos.
@@ -37,7 +38,8 @@ function buildServices() {
   const reservations = new ReservationService(prisma, inventory, config);
   const orders = new OrderService(prisma);
   const couponRewards = new CouponRewardService(prisma);
-  const payments = new PaymentService(prisma, reservations, couponRewards, config);
+  const tickets = new TicketCodeService(prisma);
+  const payments = new PaymentService(prisma, reservations, couponRewards, tickets, [], config);
   return { inventory, reservations, orders, payments, couponRewards };
 }
 
@@ -107,14 +109,14 @@ describe.skipIf(!dbAvailable)('Pagos (Fase 6)', () => {
   it('crea un pago PENDING por el total de la orden y lo reutiliza', async () => {
     const { product, user, order } = await createCheckedOutOrder(5, 1000, 2);
 
-    const payment = await payments.createForOrder(order.publicId, provider);
+    const { payment } = await payments.createForOrder(order.publicId, provider);
     expect(payment.status).toBe(PaymentStatus.PENDING);
     expect(payment.amountCents).toBe(2000);
     expect(payment.currency).toBe('PEN');
     expect(payment.provider).toBe(provider);
     expect(payment.providerTransactionId).not.toBeNull();
 
-    const again = await payments.createForOrder(order.publicId, provider);
+    const { payment: again } = await payments.createForOrder(order.publicId, provider);
     expect(again.id).toBe(payment.id);
 
     const count = await prisma.payment.count({ where: { orderId: payment.orderId } });
@@ -125,7 +127,7 @@ describe.skipIf(!dbAvailable)('Pagos (Fase 6)', () => {
 
   it('confirma el pago: pago PAID, orden PAID, reserva CONVERTED, stock vendido', async () => {
     const { product, user, order } = await createCheckedOutOrder(5, 1000, 2);
-    const payment = await payments.createForOrder(order.publicId, provider);
+    const { payment } = await payments.createForOrder(order.publicId, provider);
 
     const result = await payments.confirmPayment({
       provider,
@@ -155,7 +157,7 @@ describe.skipIf(!dbAvailable)('Pagos (Fase 6)', () => {
 
   it('el webhook es idempotente: el mismo rawEventId no mueve stock dos veces', async () => {
     const { product, user, order } = await createCheckedOutOrder(5, 1000, 2);
-    const payment = await payments.createForOrder(order.publicId, provider);
+    const { payment } = await payments.createForOrder(order.publicId, provider);
     const rawEventId = `ev-${randomUUID()}`;
 
     const first = await payments.confirmPayment({
@@ -184,7 +186,7 @@ describe.skipIf(!dbAvailable)('Pagos (Fase 6)', () => {
 
   it('un pago fallido mantiene la orden PAYMENT_PENDING y permite reintentar', async () => {
     const { product, user, order } = await createCheckedOutOrder(5, 1000, 1);
-    const payment = await payments.createForOrder(order.publicId, provider);
+    const { payment } = await payments.createForOrder(order.publicId, provider);
 
     const failed = await payments.confirmPayment({
       provider,
@@ -223,7 +225,7 @@ describe.skipIf(!dbAvailable)('Pagos (Fase 6)', () => {
 
   it('rechaza pagar una orden ya pagada', async () => {
     const { product, user, order } = await createCheckedOutOrder(5, 1000, 1);
-    const payment = await payments.createForOrder(order.publicId, provider);
+    const { payment } = await payments.createForOrder(order.publicId, provider);
 
     await payments.confirmPayment({
       provider,
@@ -242,7 +244,7 @@ describe.skipIf(!dbAvailable)('Pagos (Fase 6)', () => {
 
   it('confirma un monto distinto al de la orden (rechazado)', async () => {
     const { product, user, order } = await createCheckedOutOrder(5, 1000, 1);
-    const payment = await payments.createForOrder(order.publicId, provider);
+    const { payment } = await payments.createForOrder(order.publicId, provider);
 
     await expect(
       payments.confirmPayment({

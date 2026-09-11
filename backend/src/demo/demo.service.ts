@@ -72,6 +72,34 @@ export class DemoService {
     return this.coupons.apply({ userId: user.id, orderPublicId, code });
   }
 
+  async setBuyer(orderPublicId: string, buyer: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    docType?: string;
+    docNumber?: string;
+  }) {
+    const user = await this.demoUser();
+    const claimed = await this.prisma.order.updateMany({
+      where: { publicId: orderPublicId, userId: user.id, status: 'PAYMENT_PENDING' },
+      data: {
+        buyerFirstName: buyer.firstName.trim(),
+        buyerLastName: buyer.lastName.trim(),
+        buyerEmail: buyer.email.trim().toLowerCase(),
+        buyerPhone: buyer.phone.trim(),
+        buyerDocType: buyer.docType?.trim() || 'DNI',
+        buyerDocNumber: buyer.docNumber?.trim() ?? null,
+      },
+    });
+    if (claimed.count === 0) {
+      throw new ConflictException(
+        'No se pudieron guardar los datos: la orden no existe, está pagada o no te pertenece',
+      );
+    }
+    return this.prisma.order.findUniqueOrThrow({ where: { publicId: orderPublicId } });
+  }
+
   async createPayment(orderPublicId: string, provider?: string) {
     const user = await this.demoUser();
     const order = await this.prisma.order.findUnique({ where: { publicId: orderPublicId } });

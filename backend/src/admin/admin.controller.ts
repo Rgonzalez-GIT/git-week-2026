@@ -3,7 +3,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/roles.guard.js';
 import { Roles } from '../auth/roles.decorator.js';
 import { AdminService } from './admin.service.js';
-import { UpdateProductAdminDto, UpdatePromotionAdminDto } from './admin.dto.js';
+import { AssignTicketAdminDto, UpdateProductAdminDto, UpdatePromotionAdminDto } from './admin.dto.js';
 
 /**
  * Fase 14 - Admin (solo rol ADMIN via JWT + RolesGuard).
@@ -47,5 +47,17 @@ export class AdminController {
   @Roles('ADMIN')
   updatePromotion(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdatePromotionAdminDto) {
     return this.adminService.updatePromotion(id, dto);
+  }
+
+  @Get('tickets')
+  @Roles('ADMIN')
+  tickets() {
+    return this.adminService.listTickets();
+  }
+
+  @Patch('tickets/:code')
+  @Roles('ADMIN')
+  assignTicket(@Param('code') code: string, @Body() dto: AssignTicketAdminDto) {
+    return this.adminService.assignTicket(code, dto);
   }
 }

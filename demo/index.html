@@ -289,8 +289,8 @@
           method: 'POST',
           body: JSON.stringify({ orderPublicId: o.publicId }),
         });
-        state.payment = p;
-        step('Pago creado (PENDING)', p.publicId + ' · monto ' + sol(p.amountCents));
+        state.payment = p.payment;
+        step('Pago creado (PENDING)', p.payment.publicId + ' · monto ' + sol(p.payment.amountCents));
         const confirmBtn = document.getElementById('btnConfirm');
         if (confirmBtn) confirmBtn.disabled = false;
       } catch (e) { log(e.message, true); }

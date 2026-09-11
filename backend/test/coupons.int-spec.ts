@@ -9,6 +9,7 @@ import { OrderService } from '../src/orders/order.service.js';
 import { PaymentService } from '../src/payments/payment.service.js';
 import { CouponService } from '../src/coupons/coupon.service.js';
 import { CouponRewardService } from '../src/coupons/coupon-reward.service.js';
+import { TicketCodeService } from '../src/tickets/ticket-code.service.js';
 import { OrderStatus, PaymentProvider, PromotionStatus } from '../src/generated/prisma/enums.js';
 
 /**
@@ -39,7 +40,8 @@ function buildServices() {
   const reservations = new ReservationService(prisma, inventory, config);
   const orders = new OrderService(prisma);
   const couponRewards = new CouponRewardService(prisma);
-  const payments = new PaymentService(prisma, reservations, couponRewards, config);
+  const tickets = new TicketCodeService(prisma);
+  const payments = new PaymentService(prisma, reservations, couponRewards, tickets, [], config);
   const coupons = new CouponService(prisma);
   return { reservations, orders, payments, coupons };
 }
@@ -129,7 +131,7 @@ describe.skipIf(!dbAvailable)('Cupones de descuento (Fase 7-8)', () => {
     await ensureCoupons();
   });
 
-  it('aplica URPxGIT: descuento fijo de S/5 sobre el total de la orden', async () => {
+  it('aplica URPxGIT: S/5 de descuento POR ENTRADA sobre el total de la orden', async () => {
     const product = await createProductWithStock(5, 1000);
     const user = await createUser();
     const order = await createPendingOrder(reservations, orders, user.id, product.id, 2);
@@ -143,8 +145,8 @@ describe.skipIf(!dbAvailable)('Cupones de descuento (Fase 7-8)', () => {
 
     expect(result.processed).toBe(true);
     expect(result.replay).toBe(false);
-    expect(result.discountCents).toBe(DISCOUNT_CENTS);
-    expect(result.totalCents).toBe(2000 - DISCOUNT_CENTS);
+    expect(result.discountCents).toBe(DISCOUNT_CENTS * 2);
+    expect(result.totalCents).toBe(2000 - DISCOUNT_CENTS * 2);
     expect(result.order.discountCode).toBe('URPxGIT');
 
     const usedAfter = await prisma.promotion.findUniqueOrThrow({
@@ -268,8 +270,8 @@ describe.skipIf(!dbAvailable)('Cupones de descuento (Fase 7-8)', () => {
 
     await coupons.apply({ userId: user.id, orderPublicId: order.publicId, code: 'URPxGIT' });
 
-    const payment = await payments.createForOrder(order.publicId, PaymentProvider.CULQI);
-    expect(payment.amountCents).toBe(2000 - DISCOUNT_CENTS);
+    const { payment } = await payments.createForOrder(order.publicId, PaymentProvider.CULQI);
+    expect(payment.amountCents).toBe(2000 - DISCOUNT_CENTS * 2);
 
     await cleanup(product.id, user.id);
   });

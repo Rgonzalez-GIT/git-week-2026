@@ -1,11 +1,14 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
-import { InventoryReservation, Order, Payment, Prisma } from '../generated/prisma/client.js';
+import { InventoryReservation, Order, Payment, Prisma, TicketCode } from '../generated/prisma/client.js';
 import { PaymentProvider, PaymentStatus } from '../generated/prisma/enums.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ReservationService } from '../reservations/reservation.service.js';
 import { CouponRewardService } from '../coupons/coupon-reward.service.js';
+import { TicketCodeService } from '../tickets/ticket-code.service.js';
+import { PAYMENT_GATEWAYS } from './gateway/gateway.factory.js';
+import { GatewayChargeResult, PaymentGateway } from './gateway/gateway.interface.js';
 
 export type PaymentEvent = {
   provider: PaymentProvider;
@@ -45,6 +48,8 @@ export class PaymentService {
     private readonly prisma: PrismaService,
     private readonly reservations: ReservationService,
     private readonly couponRewards: CouponRewardService,
+    private readonly tickets: TicketCodeService,
+    @Inject(PAYMENT_GATEWAYS) private readonly gateways: PaymentGateway[],
     config: ConfigService,
   ) {
     const provider = config.get<string>('PAYMENT_PROVIDER', 'sandbox') as string;
@@ -77,11 +82,15 @@ export class PaymentService {
     if (order.userId !== ownerUserId) {
       throw new ForbiddenException('La orden no pertenece al usuario');
     }
-    return this.createForOrder(orderPublicId, provider);
+    const { payment } = await this.createForOrder(orderPublicId, provider);
+    return payment;
   }
 
   /** Crea (o reutiliza) el pago PENDING de una orden en PAYMENT_PENDING. */
-  async createForOrder(orderPublicId: string, provider: PaymentProvider = this.defaultProvider): Promise<Payment> {
+  async createForOrder(
+    orderPublicId: string,
+    provider: PaymentProvider = this.defaultProvider,
+  ): Promise<{ payment: Payment; checkout: GatewayChargeResult | null }> {
     const order = await this.prisma.order.findUnique({
       where: { publicId: orderPublicId },
       include: { reservation: true },
@@ -102,19 +111,67 @@ export class PaymentService {
     const pending = await this.prisma.payment.findFirst({
       where: { orderId: order.id, status: PaymentStatus.PENDING },
     });
-    if (pending) return pending;
+    if (pending) {
+      const checkoutForPending = await this.checkoutContextFor(pending, order);
+      return { payment: pending, checkout: checkoutForPending };
+    }
 
-    return this.prisma.payment.create({
+    const gateway = this.gateways.find((g) => g.provider === provider);
+    let providerTransactionId: string = randomUUID();
+    let gatewayCheckout: GatewayChargeResult | null = null;
+
+    if (gateway) {
+      const charge = await gateway.createCharge({
+        orderPublicId: order.publicId,
+        totalCents: order.totalCents,
+        currency: order.currency,
+        buyer: {
+          firstName: order.buyerFirstName,
+          lastName: order.buyerLastName,
+          email: order.buyerEmail,
+          phone: order.buyerPhone,
+          docNumber: order.buyerDocNumber,
+        },
+      });
+      providerTransactionId = charge.providerTransactionId;
+      gatewayCheckout = charge;
+    }
+
+    const payment = await this.prisma.payment.create({
       data: {
         publicId: randomUUID(),
         orderId: order.id,
         provider,
-        providerTransactionId: randomUUID(),
+        providerTransactionId,
         status: PaymentStatus.PENDING,
         amountCents: order.totalCents,
         currency: order.currency,
+        metadata: gatewayCheckout?.metadata ?? undefined,
       },
     });
+
+    return { payment, checkout: gatewayCheckout };
+  }
+
+  private async checkoutContextFor(
+    payment: Payment,
+    order: Order,
+  ): Promise<GatewayChargeResult | null> {
+    const gateway = this.gateways.find((g) => g.provider === payment.provider);
+    if (!gateway) return null;
+    const charge = await gateway.createCharge({
+      orderPublicId: order.publicId,
+      totalCents: order.totalCents,
+      currency: order.currency,
+      buyer: {
+        firstName: order.buyerFirstName,
+        lastName: order.buyerLastName,
+        email: order.buyerEmail,
+        phone: order.buyerPhone,
+        docNumber: order.buyerDocNumber,
+      },
+    });
+    return charge;
   }
 
   /** Confirma un pago desde el proveedor. Idempotente por rawEventId. */
@@ -140,23 +197,24 @@ export class PaymentService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      const claimed = await tx.payment.updateMany({
-        where: { id: payment.id, status: { in: [PaymentStatus.PENDING, PaymentStatus.FAILED] } },
-        data: {
-          status: event.success ? PaymentStatus.PAID : PaymentStatus.FAILED,
-          rawEventId: event.rawEventId,
-          metadata: event.metadata ?? undefined,
-        },
-      });
-      if (claimed.count === 0) {
-        return {
-          processed: false,
-          payment: await tx.payment.findUniqueOrThrow({ where: { id: payment.id } }),
-        };
-      }
+const claimed = await tx.payment.updateMany({
+      where: { id: payment.id, status: { in: [PaymentStatus.PENDING, PaymentStatus.FAILED] } },
+      data: {
+        status: event.success ? PaymentStatus.PAID : PaymentStatus.FAILED,
+        rawEventId: event.rawEventId,
+        metadata: event.metadata ?? undefined,
+      },
+    });
+    if (claimed.count === 0) {
+      return {
+        processed: false,
+        payment: await tx.payment.findUniqueOrThrow({ where: { id: payment.id } }),
+      };
+    }
 
-      const freshPayment = await tx.payment.findUniqueOrThrow({ where: { id: payment.id } });
-      const order = await tx.order.findUniqueOrThrow({ where: { id: payment.orderId } });
+    const freshPayment = await tx.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    const order = await tx.order.findUniqueOrThrow({ where: { id: payment.orderId } });
+    let ticketCodes: TicketCode[] | undefined;
 
       if (event.success) {
         if (order.reservationId) {
@@ -174,6 +232,9 @@ export class PaymentService {
 
         // Fase 7: si la orden pagada usó una promoción, emitir el cupón físico + QR.
         await this.couponRewards.issueForPaidOrder(order.id, tx);
+
+        // Código único POR ENTRADA (persona). Idempotente.
+        ticketCodes = await this.tickets.issueForPaidOrder(order.id, tx);
       }
 
       const updatedOrder = await tx.order.findUniqueOrThrow({
@@ -181,7 +242,7 @@ export class PaymentService {
         include: { reservation: true },
       });
 
-      return { processed: true, payment: freshPayment, order: updatedOrder };
+      return { processed: true, payment: freshPayment, order: updatedOrder, ticketCodes };
     });
   }
 }

@@ -147,6 +147,37 @@ export class OrderService {
     return order;
   }
 
+  /** Guarda los datos del comprador (o líder de grupo) en la orden. */
+  async setBuyer(
+    userId: number,
+    publicId: string,
+    buyer: {
+      firstName: string;
+      lastName: string;
+      email: string;
+      phone: string;
+      docType?: string;
+      docNumber?: string;
+    },
+  ): Promise<OrderWithItems> {
+    const order = await this.findOwnedByPublicId(publicId, userId);
+    const claimed = await this.prisma.order.updateMany({
+      where: { id: order.id, status: 'PAYMENT_PENDING' },
+      data: {
+        buyerFirstName: buyer.firstName.trim(),
+        buyerLastName: buyer.lastName.trim(),
+        buyerEmail: buyer.email.trim().toLowerCase(),
+        buyerPhone: buyer.phone.trim(),
+        buyerDocType: buyer.docType?.trim() || 'DNI',
+        buyerDocNumber: buyer.docNumber?.trim() ?? null,
+      },
+    });
+    if (claimed.count === 0) {
+      throw new ConflictException('La orden ya fue pagada; no se pueden modificar los datos');
+    }
+    return this.getOrderById(order.id);
+  }
+
   private async findByKey(key: string): Promise<OrderWithItems | null> {
     const idem = await this.prisma.idempotencyKey.findUnique({
       where: { key },

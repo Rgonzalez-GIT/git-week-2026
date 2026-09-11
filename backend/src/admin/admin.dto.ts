@@ -1,4 +1,4 @@
-import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator';
 import { ProductStatus, PromotionStatus } from '../generated/prisma/enums.js';
 
 export class UpdateProductAdminDto {
@@ -34,4 +34,23 @@ export class UpdatePromotionAdminDto {
   @IsOptional()
   @IsString()
   endsAt?: string;
+}
+
+/** Asignación por staff del titular a un código de entrada generado. */
+export class AssignTicketAdminDto {
+  @IsString()
+  @IsNotEmpty()
+  fullName!: string;
+
+  @IsOptional()
+  @IsString()
+  docNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  phone?: string;
 }

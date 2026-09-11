@@ -114,17 +114,17 @@ async function main() {
     {
       code: 'URPxGIT',
       name: 'Descuento URP',
-      description: 'Código comunitario URP · S/5 de descuento (500 centavos)',
+      description: 'Código comunitario URP · S/5 de descuento POR ENTRADA',
     },
     {
       code: 'UTPxGIT',
       name: 'Descuento UTP',
-      description: 'Código comunitario UTP · S/5 de descuento (500 centavos)',
+      description: 'Código comunitario UTP · S/5 de descuento POR ENTRADA',
     },
     {
       code: 'UNABxGIT',
       name: 'Descuento UNAB',
-      description: 'Código comunitario UNAB · S/5 de descuento (500 centavos)',
+      description: 'Código comunitario UNAB · S/5 de descuento POR ENTRADA',
     },
   ];
 

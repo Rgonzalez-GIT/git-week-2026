@@ -62,6 +62,7 @@ enum PaymentProvider {
   MERCADO_PAGO
   STRIPE
   NIUBIZ
+  IZIPAY
 }
 
 enum PaymentStatus {
@@ -87,6 +88,13 @@ enum QueueSessionStatus {
   EXPIRED
   ABANDONED
   DONE
+}
+
+enum TicketStatus {
+  AVAILABLE
+  ASSIGNED
+  REDEEMED
+  EXPIRED
 }
 
 // ============================ RESTRICCIONES ============================
@@ -162,6 +170,7 @@ model Product {
   cartItems    CartItem[]
   promotions   Promotion[]
   reservations InventoryReservation[]
+  ticketCodes  TicketCode[]
 
   @@index([status, tier])
   @@map("products")
@@ -251,6 +260,12 @@ model Order {
   discountCode     String?
   totalCents       Int
   currency         String      @default("PEN")
+  buyerFirstName   String?
+  buyerLastName    String?
+  buyerEmail       String?
+  buyerPhone       String?
+  buyerDocType     String?     @default("DNI")
+  buyerDocNumber   String?
   paidAt           DateTime?
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
@@ -258,6 +273,7 @@ model Order {
   items        OrderItem[]
   payments     Payment[]
   coupons      Coupon[]
+  ticketCodes  TicketCode[]
   idempotency  IdempotencyKey?
 
   @@index([userId, status])
@@ -278,6 +294,30 @@ model OrderItem {
   @@unique([orderId, productId])
   @@index([productId])
   @@map("order_items")
+}
+
+// Código único por ENTRADA (persona) emitido al confirmarse el pago.
+// Individuos y líderes grupales reciben su código al pagar; el resto de
+// integrantes se asigna posteriormente vía panel de administración.
+model TicketCode {
+  id             Int          @id @default(autoincrement())
+  publicId       String       @unique
+  orderId        Int
+  order          Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId      Int?
+  product        Product?     @relation(fields: [productId], references: [id])
+  code           String       @unique
+  status         TicketStatus @default(AVAILABLE)
+  buyerFullName  String?
+  buyerDocNumber String?
+  buyerEmail     String?
+  buyerPhone     String?
+  assignedAt     DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@index([orderId])
+  @@index([status])
+  @@map("ticket_codes")
 }
 
 // ============================ PAGOS ============================

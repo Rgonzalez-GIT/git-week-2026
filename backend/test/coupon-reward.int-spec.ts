@@ -9,6 +9,7 @@ import { OrderService } from '../src/orders/order.service.js';
 import { PaymentService } from '../src/payments/payment.service.js';
 import { CouponService } from '../src/coupons/coupon.service.js';
 import { CouponRewardService } from '../src/coupons/coupon-reward.service.js';
+import { TicketCodeService } from '../src/tickets/ticket-code.service.js';
 import { PaymentProvider, CouponStatus } from '../src/generated/prisma/enums.js';
 
 /**
@@ -59,7 +60,8 @@ describe.skipIf(!dbAvailable)('Cupón físico (Fase 7 completa)', () => {
     const reservations = new ReservationService(prisma, inventory, config);
     const orders = new OrderService(prisma);
     const couponService = new CouponService(prisma);
-    const payments = new PaymentService(prisma, reservations, rewards, config);
+    const tickets = new TicketCodeService(prisma);
+    const payments = new PaymentService(prisma, reservations, rewards, tickets, [], config);
 
     const role = await prisma.role.upsert({
       where: { code: 'CUSTOMER' },
@@ -94,7 +96,7 @@ describe.skipIf(!dbAvailable)('Cupón físico (Fase 7 completa)', () => {
       await couponService.apply({ userId: user.id, orderPublicId: order.publicId, code: promotion.code });
     }
 
-    const payment = await payments.createForOrder(order.publicId, PaymentProvider.CULQI);
+    const { payment } = await payments.createForOrder(order.publicId, PaymentProvider.CULQI);
     const result = await payments.confirmPayment({
       provider: payment.provider,
       providerTransactionId: payment.providerTransactionId!,

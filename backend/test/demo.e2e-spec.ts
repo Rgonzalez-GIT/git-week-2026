@@ -24,6 +24,8 @@ let app: INestApplication;
       qrImage: any;
       user: any;
       promotion: any;
+      role: any;
+      ticketCode: any;
     };
 
   beforeAll(async () => {
@@ -148,19 +150,28 @@ let app: INestApplication;
     expect(order.body.totalCents).toBe(5800);
     const orderPublicId = order.body.publicId;
 
+    // S/5 de descuento POR ENTRADA (2 entradas → S/10).
     const coupon = await request(server)
       .post('/demo/coupons/apply')
       .send({ orderPublicId, code: 'URPxGIT' })
       .expect(201);
-    expect(coupon.body.discountCents).toBe(500);
-    expect(coupon.body.totalCents).toBe(5300);
+    expect(coupon.body.discountCents).toBe(1000);
+    expect(coupon.body.totalCents).toBe(4800);
+
+    // Datos del comprador / líder del grupo.
+    const buyer = await request(server)
+      .post(`/demo/orders/${orderPublicId}/buyer`)
+      .send({ firstName: 'Ana', lastName: 'Pérez Luna', email: 'ana@mail.pe', phone: '999111222' })
+      .expect(201);
+    expect(buyer.body.buyerFirstName).toBe('Ana');
 
     const payment = await request(server)
       .post('/demo/payments')
       .send({ orderPublicId })
       .expect(201);
-    expect(payment.body.status).toBe('PENDING');
-    expect(payment.body.amountCents).toBe(5300);
+    expect(payment.body.payment.status).toBe('PENDING');
+    expect(payment.body.payment.amountCents).toBe(4800);
+    expect(payment.body.payment.publicId).toBeTruthy();
 
     const confirmed = await request(server)
       .post('/demo/payments/confirm')
@@ -169,6 +180,22 @@ let app: INestApplication;
     expect(confirmed.body.processed).toBe(true);
     expect(confirmed.body.payment.status).toBe('PAID');
     expect(confirmed.body.order.status).toBe('PAID');
+
+    // Un código POR ENTRADA (2 entradas → 2 códigos). El primero = líder.
+    expect(confirmed.body.ticketCodes).toHaveLength(2);
+    expect(confirmed.body.ticketCodes[0].code).toMatch(/^GIT2026-/);
+    expect(confirmed.body.ticketCodes[0].status).toBe('ASSIGNED');
+    expect(confirmed.body.ticketCodes[0].buyerFullName).toBe('Ana Pérez Luna');
+    expect(confirmed.body.ticketCodes[1].status).toBe('AVAILABLE');
+
+    // Replay del webhook: idempotente, no emite más códigos.
+    const second = await request(server)
+      .post('/demo/payments/confirm')
+      .send({ orderPublicId, success: true })
+      .expect(201);
+    expect(second.body.processed).toBe(false);
+    const codes = await prisma.ticketCode.count({ where: { order: { publicId: orderPublicId } } });
+    expect(codes).toBe(2);
 
     const stock = await request(server).get(`/products/${productId}/stock`).expect(200);
     expect(stock.body.soldStock).toBe(2);
@@ -179,6 +206,51 @@ let app: INestApplication;
       where: { publicId: reservationPublicId },
     });
     expect(reservationDb.status).toBe('CONVERTED');
+  });
+
+  it('el descuento del cupón aplica S/5 por entrada (3 entradas → S/15)', async () => {
+    const server = app.getHttpServer();
+    const reservation = await request(server)
+      .post('/demo/reservations')
+      .send({ productId, quantity: 3 })
+      .expect(201);
+    const order = await request(server)
+      .post('/demo/orders')
+      .send({ reservationPublicId: reservation.body.reservation.publicId })
+      .expect(201);
+    expect(order.body.totalCents).toBe(8700);
+
+    const coupon = await request(server)
+      .post('/demo/coupons/apply')
+      .send({ orderPublicId: order.body.publicId, code: 'UTPxGIT' })
+      .expect(201);
+    expect(coupon.body.discountCents).toBe(1500);
+    expect(coupon.body.totalCents).toBe(7200);
+  });
+
+  it('tras pagar la orden ya no se puede modificar el comprador', async () => {
+    const server = app.getHttpServer();
+    const reservation = await request(server)
+      .post('/demo/reservations')
+      .send({ productId, quantity: 1 })
+      .expect(201);
+    const order = await request(server)
+      .post('/demo/orders')
+      .send({ reservationPublicId: reservation.body.reservation.publicId })
+      .expect(201);
+    await request(server)
+      .post('/demo/payments')
+      .send({ orderPublicId: order.body.publicId })
+      .expect(201);
+    await request(server)
+      .post('/demo/payments/confirm')
+      .send({ orderPublicId: order.body.publicId, success: true })
+      .expect(201);
+
+    const res = await request(server)
+      .post(`/demo/orders/${order.body.publicId}/buyer`)
+      .send({ firstName: 'Lu', lastName: 'Roca', email: 'lu@mail.pe', phone: '988222333' });
+    expect(res.status).toBe(409);
   });
 
   it('el replay idempotente no crea otra orden', async () => {

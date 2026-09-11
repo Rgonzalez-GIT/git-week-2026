@@ -34,7 +34,8 @@ export interface ApplyCouponResult {
  * Fase 7-8/19 - Cupones de descuento.
  *
  * Adaptado al requerimiento: los codigos funcionales URPxGIT, UTPxGIT y
- * UNABxGIT descuentan S/5 (500 centavos) del precio al aplicarse en checkout.
+ * UNABxGIT descuentan S/5 (500 centavos) POR ENTRADA: si la orden es de N
+ * entradas, el descuento es S/5 * N (ej. 3 entradas = S/15).
  *
  * Diferencia con APPGITWEEK.md Fase 7: el cupon fisico (code PROMO-2026-XXXXXX
  * + QR a /coupon/{public-id}) se genera recien cuando el pago es CONFIRMADO,
@@ -87,6 +88,17 @@ export class CouponService {
 
     const order = await this.prisma.order.findUnique({
       where: { publicId: input.orderPublicId },
+      include: {
+        items: {
+          select: {
+            id: true,
+            productId: true,
+            quantity: true,
+            unitPriceCents: true,
+            lineTotalCents: true,
+          },
+        },
+      },
     });
     if (!order) {
       throw new NotFoundException(`Orden ${input.orderPublicId} no encontrada`);
@@ -104,7 +116,7 @@ export class CouponService {
       throw new ConflictException('La orden ya tiene un descuento aplicado');
     }
 
-    const discountCents = this.computeDiscount(promotion, order.subtotalCents);
+    const discountCents = this.computeDiscount(promotion, order);
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const capacityGuarded =
@@ -176,11 +188,13 @@ export class CouponService {
     return promotion;
   }
 
-  private computeDiscount(promotion: Promotion, subtotalCents: number): number {
+  private computeDiscount(promotion: Promotion, order: { subtotalCents: number; items: { quantity: number }[] }): number {
+    const totalQuantity = order.items.reduce((acc, item) => acc + item.quantity, 0);
     if (promotion.discountType === DiscountType.PERCENT) {
-      return Math.min(subtotalCents, Math.floor((subtotalCents * promotion.discountValue) / 100));
+      return Math.min(order.subtotalCents, Math.floor((order.subtotalCents * promotion.discountValue) / 100));
     }
-    return Math.min(subtotalCents, promotion.discountValue);
+    // FIXED_AMOUNT: S/ descuentoValue POR ENTRADA (ej. 500 * 3 = 1500 para 3 entradas).
+    return Math.min(order.subtotalCents, promotion.discountValue * totalQuantity);
   }
 
   private toResult(replay: boolean, order: Order & { items?: unknown[] }): ApplyCouponResult {
