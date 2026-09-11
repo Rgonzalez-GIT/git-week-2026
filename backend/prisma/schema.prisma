@@ -1,0 +1,459 @@
+// Modelo de datos — módulo e-commerce GIT Week 2026
+// PostgreSQL es la fuente de verdad. Redis SOLO gestiona acceso/colas/cache.
+// Anti-sobreventa: operaciones atómicas con guardas + CHECK constraints en migración.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================ ENUMS ============================
+
+enum PlanTier {
+  GENERAL
+  PROFESSIONAL
+  EXECUTIVE
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  HIDDEN
+  ARCHIVED
+}
+
+enum PromotionStatus {
+  DRAFT
+  SCHEDULED
+  ACTIVE
+  PAUSED
+  ENDED
+  CANCELLED
+}
+
+enum DiscountType {
+  PERCENT
+  FIXED_AMOUNT
+}
+
+enum ReservationStatus {
+  ACTIVE
+  EXPIRED
+  CONVERTED
+  CANCELLED
+}
+
+enum OrderStatus {
+  PENDING
+  PAYMENT_PENDING
+  PAID
+  COMPLETED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentProvider {
+  CULQI
+  MERCADO_PAGO
+  STRIPE
+  NIUBIZ
+}
+
+enum PaymentStatus {
+  PENDING
+  AUTHORIZED
+  PAID
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum CouponStatus {
+  AVAILABLE
+  RESERVED
+  REDEEMED
+  EXPIRED
+  CANCELLED
+}
+
+enum QueueSessionStatus {
+  WAITING
+  ADMITTED
+  EXPIRED
+  ABANDONED
+  DONE
+}
+
+// ============================ RESTRICCIONES ============================
+
+enum RestrictionType {
+  RATE_LIMIT
+  LOCKOUT
+  IDEMPOTENCY
+}
+
+enum RestrictionStatus {
+  ACTIVE
+  RELEASED
+}
+
+// ============================ IAM ============================
+
+model Role {
+  id          Int      @id @default(autoincrement())
+  code        String   @unique
+  name        String
+  description String?
+  users       User[]
+
+  @@map("roles")
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  fullName     String
+  passwordHash String
+  roleId       Int
+  role         Role     @relation(fields: [roleId], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  orders        Order[]
+  reservations  InventoryReservation[]
+  cartItems     CartItem[]
+  coupons       Coupon[]
+  redemptions   CouponRedemption[]
+  queueSessions QueueSession[]
+  notifications Notification[]
+  auditLogs     AuditLog[] @relation("ActorAuditLogs")
+
+  @@index([roleId])
+  @@map("users")
+}
+
+// ============================ CATÁLOGO ============================
+
+model Product {
+  id          Int           @id @default(autoincrement())
+  slug        String        @unique
+  name        String
+  description String?
+  priceCents  Int
+  currency    String        @default("PEN")
+  tier        PlanTier?
+  status      ProductStatus @default(ACTIVE)
+  imageUrl    String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  inventory    Inventory?
+  orderItems   OrderItem[]
+  cartItems    CartItem[]
+  promotions   Promotion[]
+  reservations InventoryReservation[]
+
+  @@index([status, tier])
+  @@map("products")
+}
+
+// Fuente de verdad del stock. availableStock siempre >= 0.
+// Versión para detección de conflictos (optimistic locking) en capa de servicio.
+model Inventory {
+  id             Int      @id @default(autoincrement())
+  productId      Int      @unique
+  product        Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  initialStock   Int      @default(0)
+  reservedStock  Int      @default(0)
+  soldStock      Int      @default(0)
+  availableStock Int      @default(0)
+  version        Int      @default(1)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("inventory")
+}
+
+// ============================ PROMOCIONES ============================
+
+model Promotion {
+  id                  Int            @id @default(autoincrement())
+  publicId            String         @unique
+  name                String
+  description         String?
+  productId           Int?
+  product             Product?       @relation(fields: [productId], references: [id])
+  discountType        DiscountType
+  discountValue       Int
+  maxRedemptions      Int?
+  usedRedemptions     Int            @default(0)
+  startsAt            DateTime
+  endsAt              DateTime
+  status              PromotionStatus @default(DRAFT)
+  issuesCouponOnPaid  Boolean        @default(true)
+  couponValidityHours Int            @default(720)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  coupons Coupon[]
+
+  @@index([status, startsAt, endsAt])
+  @@map("promotions")
+}
+
+// ============================ RESERVAS ============================
+
+model InventoryReservation {
+  id         Int               @id @default(autoincrement())
+  publicId   String            @unique
+  userId     Int
+  user       User              @relation(fields: [userId], references: [id])
+  productId  Int
+  product    Product           @relation(fields: [productId], references: [id])
+  quantity   Int
+  status     ReservationStatus @default(ACTIVE)
+  expiresAt  DateTime
+  releasedAt DateTime?
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+  order      Order?
+
+  @@index([status, expiresAt])
+  @@index([userId, status])
+  @@index([productId, status])
+  @@map("inventory_reservations")
+}
+
+// ============================ ORDENES ============================
+
+model Order {
+  id               Int         @id @default(autoincrement())
+  publicId         String      @unique
+  userId           Int
+  user             User        @relation(fields: [userId], references: [id])
+  idempotencyKey   String      @unique
+  reservationId    Int?        @unique
+  reservation      InventoryReservation? @relation(fields: [reservationId], references: [id])
+  status           OrderStatus @default(PENDING)
+  subtotalCents    Int
+  discountCents    Int         @default(0)
+  totalCents       Int
+  currency         String      @default("PEN")
+  paidAt           DateTime?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  items        OrderItem[]
+  payments     Payment[]
+  coupons      Coupon[]
+  idempotency  IdempotencyKey?
+
+  @@index([userId, status])
+  @@index([status])
+  @@map("orders")
+}
+
+model OrderItem {
+  id             Int     @id @default(autoincrement())
+  orderId        Int
+  order          Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId      Int
+  product        Product @relation(fields: [productId], references: [id])
+  quantity       Int
+  unitPriceCents Int
+  lineTotalCents Int
+
+  @@unique([orderId, productId])
+  @@index([productId])
+  @@map("order_items")
+}
+
+// ============================ PAGOS ============================
+
+model Payment {
+  id                    Int             @id @default(autoincrement())
+  publicId              String          @unique
+  orderId               Int
+  order                 Order           @relation(fields: [orderId], references: [id])
+  provider              PaymentProvider
+  providerTransactionId String?
+  rawEventId            String?
+  status                PaymentStatus   @default(PENDING)
+  amountCents           Int
+  currency              String          @default("PEN")
+  metadata              Json?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  @@unique([provider, providerTransactionId])
+  @@unique([provider, rawEventId])
+  @@index([orderId])
+  @@index([status])
+  @@map("payments")
+}
+
+// ============================ CUPONES ============================
+
+model Coupon {
+  id          Int          @id @default(autoincrement())
+  publicId    String       @unique
+  code        String       @unique
+  userId      Int
+  user        User         @relation(fields: [userId], references: [id])
+  promotionId Int
+  promotion   Promotion    @relation(fields: [promotionId], references: [id])
+  orderId     Int
+  order       Order        @relation(fields: [orderId], references: [id])
+  issuedAt    DateTime     @default(now())
+  expiresAt   DateTime
+  status      CouponStatus @default(AVAILABLE)
+  redeemedAt  DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  redemptions CouponRedemption[]
+  qrImages    QrImage[]
+
+  @@index([status])
+  @@index([userId, status])
+  @@index([promotionId])
+  @@map("coupons")
+}
+
+// Registro transaccional de cada intento de canje (anti doble canje)
+model CouponRedemption {
+  id        Int      @id @default(autoincrement())
+  couponId  Int
+  coupon    Coupon   @relation(fields: [couponId], references: [id])
+  userId    Int?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  createdAt DateTime @default(now())
+
+  @@index([couponId, createdAt])
+  @@map("coupon_redemptions")
+}
+
+// Artefacto QR (path público /coupon/{publicId}, sin datos sensibles)
+model QrImage {
+  id        Int      @id @default(autoincrement())
+  couponId  Int
+  coupon    Coupon   @relation(fields: [couponId], references: [id])
+  url       String
+  createdAt DateTime @default(now())
+
+  @@index([couponId])
+  @@map("qr_images")
+}
+
+// ============================ CARRITO ============================
+
+model CartItem {
+  id         Int      @id @default(autoincrement())
+  userId     Int?
+  user       User?    @relation(fields: [userId], references: [id])
+  sessionKey String?
+  productId  Int
+  product    Product  @relation(fields: [productId], references: [id])
+  quantity   Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, productId])
+  @@unique([sessionKey, productId])
+  @@index([productId])
+  @@map("cart_items")
+}
+
+// ============================ COLA VIRTUAL ============================
+
+// PostgreSQL persiste estado. Redis administra posición/control de acceso en tiempo real.
+model QueueSession {
+  id         Int                @id @default(autoincrement())
+  publicId   String             @unique
+  userId     Int?
+  user       User?              @relation(fields: [userId], references: [id])
+  sessionKey String?
+  status     QueueSessionStatus @default(WAITING)
+  position   Int?
+  heartbeatAt DateTime
+  admittedAt DateTime?
+  expiresAt  DateTime?
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  @@index([status, createdAt])
+  @@index([userId, status])
+  @@map("queue_sessions")
+}
+
+// ============================ OBSERVABILIDAD / AUDITORÍA ============================
+
+// Idempotencia de checkout/webhooks/redención
+model IdempotencyKey {
+  id         Int      @id @default(autoincrement())
+  key        String   @unique
+  orderId    Int?     @unique
+  order      Order?   @relation(fields: [orderId], references: [id])
+  status     String   @default("PENDING")
+  payload    Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("idempotency_keys")
+}
+
+model AuditLog {
+  id            Int      @id @default(autoincrement())
+  correlationId String   @default("")
+  actorId       Int?
+  actor         User?    @relation("ActorAuditLogs", fields: [actorId], references: [id])
+  action        String
+  entityType    String
+  entityId      String?
+  oldData       Json?
+  newData       Json?
+  ipAddress     String?
+  userAgent     String?
+  createdAt     DateTime @default(now())
+
+  @@index([correlationId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  type      String
+  title     String
+  body      String?
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+// Restricciones de seguridad (rate limit / lockout) con estado en DB
+model Restriction {
+  id         Int                @id @default(autoincrement())
+  type       RestrictionType
+  target     String
+  reason     String?
+  status     RestrictionStatus  @default(ACTIVE)
+  expiresAt  DateTime?
+  createdAt  DateTime           @default(now())
+  releasedAt DateTime?
+
+  @@unique([type, target])
+  @@index([type, target, status])
+  @@map("restrictions")
+}

@@ -1,0 +1,17 @@
+node_modules
+node_modules/
+dist/
+coverage/
+
+# Keep environment variables out of version control
+.env
+.env.*
+!.env.example
+
+# Keep generated artifacts out of version control
+/src/generated/prisma
+
+# Logs y misceláneos
+*.log
+*.tsbuildinfo
+.DS_Store
