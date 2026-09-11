@@ -27,6 +27,11 @@ RUN npm ci --legacy-peer-deps --omit=dev && npm cache clean --force
 
 COPY --from=build /app/dist ./dist
 
+# Archivos necesarios para que prisma migrate y el seed funcionen dentro del contenedor
+COPY --from=build /app/prisma7.config.ts ./
+COPY --from=build /app/prisma ./prisma
+COPY --from=build /app/dist/generated ./src/generated
+
 EXPOSE 3001
 USER node
 CMD ["node", "dist/main.js"]
